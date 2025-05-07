@@ -10,12 +10,19 @@ class User(db.Model):
     __tablename__ = 'users'
     
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    username = db.Column(db.String(80), unique=True, nullable=True)  # Made nullable for Google users
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(128), nullable=True)  # Made nullable for Google users
     created_at = db.Column(db.DateTime, default=datetime.now())
     rep_goal = db.Column(db.Integer, nullable=False, default=8)
     ex_goal = db.Column(db.Integer, nullable=False, default=5)
+    profile_picture = db.Column(db.String(255), nullable=True)
+    name = db.Column(db.String(128))
+    height = db.Column(db.Float, nullable=True)
+    weight = db.Column(db.Float, nullable=True)
+    goal = db.Column(db.String(128), nullable=True)
+    google_id = db.Column(db.String(128), unique=True, nullable=True)  # Added for Google OAuth
+    is_google_user = db.Column(db.Boolean, default=False)  # Added to identify Google users
 
     def set_password(self, password):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -45,6 +52,7 @@ class UserExercise(db.Model):
     tut_score = db.Column(db.Float, nullable=False)
     count = db.Column(db.Integer, nullable=True, default=0)
     date = db.Column(db.DateTime, default=datetime.now())
+    duration = db.Column(db.Integer)  # Duration in seconds
 
 
 class ExerciseUpload(db.Model):

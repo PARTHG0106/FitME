@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Start {{ exercise.replace('_', ' ').title() }}</h3>
+                </div>
+                <div class="card-body">
+                    {% if last_workout %}
+                    <div class="alert alert-info">
+                        <h5>Last Workout</h5>
+                        <p>Date: {{ last_workout.date.strftime('%Y-%m-%d %H:%M') }}</p>
+                        <p>Reps: {{ last_workout.total_reps }}</p>
+                        <p>Good Reps: {{ last_workout.rom_score }}</p>
+                        <p>Time Under Tension: {{ "%.1f"|format(last_workout.tut_score) }}s</p>
+                    </div>
+                    {% endif %}
+
+                    <form action="{{ url_for('start', exercise=exercise) }}" method="GET" class="mb-4">
+                        <div class="form-group">
+                            <label for="rep_goal">Rep Goal:</label>
+                            <input type="number" class="form-control" id="rep_goal" name="rep_goal" 
+                                   value="{{ default_reps }}" min="1" max="100" required>
+                        </div>
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">Start Exercise</button>
+                            <a href="{{ url_for('exercises') }}" class="btn btn-secondary btn-lg">Back to Exercises</a>
+                        </div>
+                    </form>
+
+                    <div class="exercise-tips">
+                        <h4>Exercise Tips:</h4>
+                        <ul class="list-group">
+                            <li class="list-group-item">Make sure you have enough space around you</li>
+                            <li class="list-group-item">Position yourself so your full body is visible in the camera</li>
+                            <li class="list-group-item">Follow the on-screen feedback for proper form</li>
+                            <li class="list-group-item">Take breaks if needed</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -200,13 +200,15 @@ def gen_frames(user_id, rep_goal):
 
                             with app.app_context():
                                 print(user_id, rom_score)
+                                duration = int(time.time() - start_time)
                                 new_exercise = UserExercise(
                                     user_id=user_id,
                                     exercise_id=exercise_id,
                                     total_reps=rep_goal,
                                     rom_score=total_rom_score,
                                     tut_score=total_tut_score,
-                                    count=rep_goal
+                                    count=rep_goal,
+                                    duration=duration
                                 )
                                 db.session.add(new_exercise)
                                 db.session.commit()

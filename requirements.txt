@@ -9,7 +9,7 @@ SQLAlchemy==2.0.27
 pandas==2.2.0
 numpy==1.26.4
 opencv-python==4.10.0.84
-mediapipe==0.10.9
+mediapipe==0.10.13
 dash==2.14.2
 dash-bootstrap-components==1.5.0
 plotly==5.18.0
@@ -18,3 +18,5 @@ email-validator==2.1.0.post1
 Pillow==10.2.0
 WTForms==3.1.2
 locust==2.20.1
+google-auth==2.27.0
+google-auth-oauthlib==1.2.0

@@ -1,4 +1,4 @@
-from flask import Flask, flash, render_template, redirect, request, url_for, jsonify, session, Response, send_file
+from flask import Flask, flash, render_template, redirect, request, url_for, jsonify, session, Response, send_file, make_response
 from forms import LoginForm, SearchForm, RegistrationForm
 from flask_migrate import Migrate
 from config import Config
@@ -22,8 +22,15 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import time
+from recommendation_system import WorkoutRecommender
+from flask_cors import CORS
+import sys
+import requests
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 app = Flask(__name__)
+CORS(app, origins=["http://localhost:5173", "https://*.ngrok.io", "https://*.ngrok-free.app"], supports_credentials=True)
 app.config.from_object(Config)
 db.init_app(app)
 bcrypt.init_app(app)
@@ -433,6 +440,13 @@ def mainboard():
     schedules = WorkoutSchedule.query.filter_by(user_id=session['user_id']).all()
     now = datetime.now()
 
+    # Debug prints
+    print(f'Current user_id: {session.get("user_id")}', flush=True)
+    print('UserExercise count for this user:', UserExercise.query.filter_by(user_id=session.get('user_id')).count(), flush=True)
+
+    # Check if user has any workout data
+    has_data = UserExercise.query.filter_by(user_id=session['user_id']).count() > 0
+
     # Calculate workout efficiency
     total_exercises = UserExercise.query.filter_by(user_id=session['user_id']).count()
     if total_exercises > 0:
@@ -509,7 +523,8 @@ def mainboard():
                          workout_days=workout_days,
                          total_reps=total_reps,
                          selected_exercise_name=selected_exercise_name,
-                         alternate_message=alternate_message)
+                         alternate_message=alternate_message,
+                         has_data=has_data)
 
 
 
@@ -585,7 +600,10 @@ def exercises():
     
     # If an exercise is selected, get its YouTube link
     if selected_exercise:
-        exercise = Exercises.query.filter_by(name=selected_exercise).first()
+        # Convert underscore to space and capitalize each word to match database format
+        formatted_exercise = selected_exercise.replace('_', ' ').title()
+        # Use case-insensitive search
+        exercise = Exercises.query.filter(func.lower(Exercises.name) == func.lower(formatted_exercise)).first()
         if exercise:
             video_link = exercise.link
     
@@ -631,30 +649,105 @@ def workout():
 @app.route('/start/<exercise>')
 @login_required
 def start(exercise):
-    search_form = SearchForm()
-    user_id = session.get('user_id')
-    rep_goal = db.session.query(User.rep_goal).filter_by(id=user_id).scalar()
+    try:
+        # Always get rep goal from query parameters if present
+        rep_goal = request.args.get('rep_goal', type=int)
+        if not rep_goal or rep_goal < 1:
+            user = User.query.get(session['user_id'])
+            rep_goal = user.rep_goal if user and user.rep_goal else 7
 
-    return render_template('instructions.html', search_form=search_form, exercise=exercise, user_id=user_id, rep_goal=rep_goal)
+        # Get the exercise from the database
+        exercise_record = Exercises.query.filter_by(name=exercise.replace('_', ' ').title()).first()
+        if not exercise_record:
+            flash('Exercise not found', 'error')
+            return redirect(url_for('exercises'))
+
+        print(f"DEBUG: Rendering start.html with rep_goal={rep_goal}")
+        return render_template('start.html',
+                             exercise=exercise,
+                             user_id=session['user_id'],
+                             rep_goal=rep_goal)
+    except Exception as e:
+        print(f"Error in start: {str(e)}")
+        flash('Error starting exercise', 'error')
+        return redirect(url_for('exercises'))
 
 # Actual Exercise Page
 @app.route('/start_page/<exercise>')
 @login_required
 def start_page(exercise):
-    search_form = SearchForm()
-    user_id = session.get('user_id')
-    rep_goal = db.session.query(User.rep_goal).filter_by(id=user_id).scalar()
+    try:
+        # Get the exercise from the database
+        exercise_record = Exercises.query.filter_by(name=exercise.replace('_', ' ').title()).first()
+        if not exercise_record:
+            flash('Exercise not found', 'error')
+            return redirect(url_for('exercises'))
 
+        # Get user's profile
+        user = User.query.get(session['user_id'])
+        if not user:
+            flash('User not found', 'error')
+            return redirect(url_for('exercises'))
 
+        # Get user's last workout for this exercise
+        last_workout = UserExercise.query.filter_by(
+            user_id=session['user_id'],
+            exercise_id=exercise_record.id
+        ).order_by(UserExercise.date.desc()).first()
 
-    video_feed_url = url_for('video_feed', exercise=exercise, user_id=user_id, rep_goal=rep_goal)
+        # Set default rep goal based on user's profile rep_goal or last workout, default to 7
+        default_reps = user.rep_goal if user.rep_goal else (last_workout.total_reps if last_workout else 7)
 
-    return render_template('start.html', search_form=search_form, exercise=exercise, user_id=user_id, rep_goal=rep_goal, video_feed_url=video_feed_url)
+        return render_template('start_page.html',
+                             exercise=exercise,
+                             exercise_id=exercise_record.id,
+                             default_reps=default_reps,
+                             last_workout=last_workout)
+    except Exception as e:
+        print(f"Error in start_page: {str(e)}")
+        flash('Error loading exercise page', 'error')
+        return redirect(url_for('exercises'))
 
 # Video feed linked to start.html
 @app.route('/video_feed/<exercise>/<int:user_id>/<int:rep_goal>')
 def video_feed(exercise, user_id, rep_goal):
-    return Response(gen_frames(exercise, user_id, rep_goal), mimetype='multipart/x-mixed-replace; boundary=frame')
+    try:
+        # Convert exercise name to match the function names
+        exercise_map = {
+            'shoulder_press': 'shoulder_press',
+            'bicep_curls': 'bicep_curls',
+            'barbell_squats': 'barbell_squats',
+            'deadlift': 'deadlift',
+            'lateral_raises': 'lateral_raises'
+        }
+        
+        exercise_key = exercise_map.get(exercise)
+        if not exercise_key:
+            flash('Invalid exercise selected', 'error')
+            return redirect(url_for('exercises'))
+
+        if exercise_key == 'barbell_squats':
+            return Response(gen_frames_barbell_squats(user_id, rep_goal),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        elif exercise_key == 'shoulder_press':
+            return Response(gen_frames_shoulder_press(user_id, rep_goal),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        elif exercise_key == 'bicep_curls':
+            return Response(gen_frames_bicep_curls(user_id, rep_goal),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        elif exercise_key == 'deadlift':
+            return Response(gen_frames_deadlift(user_id, rep_goal),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        elif exercise_key == 'lateral_raises':
+            return Response(gen_frames_lateral_raises(user_id, rep_goal),
+                          mimetype='multipart/x-mixed-replace; boundary=frame')
+        else:
+            flash('Invalid exercise selected', 'error')
+            return redirect(url_for('exercises'))
+    except Exception as e:
+        print(f"Error in video feed: {str(e)}")
+        flash('Error starting exercise. Please try again.', 'error')
+        return redirect(url_for('exercises'))
 
 # Route to logout
 @app.route('/logout')
@@ -735,29 +828,22 @@ def upload_exercise():
 @login_required
 def delete_analyzed_video(upload_id):
     upload = ExerciseUpload.query.get_or_404(upload_id)
-    
     # Ensure the user can only delete their own videos
     if upload.user_id != session['user_id']:
-        flash('Unauthorized access', 'error')
-        return redirect(url_for('upload_exercise'))
-    
+        return jsonify({'error': 'Unauthorized access'}), 403
     try:
         # Delete the video file
         video_path = os.path.join(app.config['UPLOAD_FOLDER'], upload.video_path)
         if os.path.exists(video_path):
             os.remove(video_path)
-        
         # Delete the database record
         db.session.delete(upload)
         db.session.commit()
-        
-        flash('Video deleted successfully!', 'success')
+        return jsonify({'message': 'Video deleted successfully!'})
     except Exception as e:
         print(f"Error deleting video: {str(e)}")
         db.session.rollback()
-        flash('Error deleting video', 'error')
-    
-    return redirect(url_for('upload_exercise'))
+        return jsonify({'error': 'Error deleting video'}), 500
 
 @app.route('/schedule', methods=['GET'])
 @login_required
@@ -789,7 +875,7 @@ def add_schedule():
     flash('Exercise added to schedule successfully!', 'success')
     return redirect(url_for('schedule'))
 
-@app.route('/delete_schedule/<int:schedule_id>', methods=['POST'])
+@app.route('/delete_schedule/<int:schedule_id>', methods=['POST', 'DELETE'])
 @login_required
 def delete_schedule(schedule_id):
     schedule = WorkoutSchedule.query.get_or_404(schedule_id)
@@ -880,42 +966,791 @@ def get_schedule_status(schedule_id):
 @login_required
 def download_analyzed_video(upload_id):
     upload = ExerciseUpload.query.get_or_404(upload_id)
-    
     # Ensure the user can only download their own videos
     if upload.user_id != session['user_id']:
-        flash('Unauthorized access', 'error')
-        return redirect(url_for('upload_exercise'))
-    
+        return jsonify({'error': 'Unauthorized access'}), 403
     try:
         # Full path to the video file
         video_path = os.path.join(app.config['UPLOAD_FOLDER'], upload.video_path)
-        
+        video_path = os.path.normpath(video_path)
         # Check if file exists
         if not os.path.exists(video_path):
-            flash('Video file not found', 'error')
-            return redirect(url_for('upload_exercise'))
-        
+            print(f"ERROR: File does not exist: {video_path}")
+            return jsonify({'error': 'Video file not found'}), 404
+        # Print file size for debugging
+        print(f"Sending file: {video_path}, size: {os.path.getsize(video_path)} bytes")
         # Check if download parameter is provided
         download = request.args.get('download', 'false') == 'true'
-        
         # Determine file size
         file_size = os.path.getsize(video_path)
-        
+        # Map exercise_type to a human-readable filename
+        name_map = {
+            'squat': 'barbell_squats',
+            'bicep_curl': 'bicep_curls',
+            'shoulder_press': 'shoulder_press',
+            'deadlift': 'deadlift',
+            'lateral_raise': 'lateral_raises'
+        }
+        filename = f"{name_map.get(upload.exercise_type, upload.exercise_type)}_analyzed.mp4"
         response = send_file(
             video_path,
             mimetype='video/mp4',
             as_attachment=download,
-            download_name=f"{upload.exercise_type}_analyzed.mp4" if download else None
+            download_name=filename if download else None
         )
-        
         # Add Content-Length header
         response.headers['Content-Length'] = file_size
-        
         return response
     except Exception as e:
         print(f"Error serving video: {str(e)}")
-        flash('Error serving video', 'error')
-        return redirect(url_for('upload_exercise'))
+        return jsonify({'error': 'Error serving video'}), 500
+
+@app.route('/recommendations')
+@login_required
+def recommendations():
+    recommender = WorkoutRecommender(session['user_id'])
+    recommendations = recommender.get_recommendations()
+    
+    # Check if user has any workout data
+    has_data = UserExercise.query.filter_by(user_id=session['user_id']).count() > 0
+    
+    # Get progression recommendations for each exercise
+    progression_recommendations = {}
+    for exercise in Exercises.query.all():
+        progression = recommender.get_progression_recommendation(exercise.id)
+        if progression:
+            progression_recommendations[exercise.name] = progression
+    
+    return render_template('recommendations.html',
+                         recommendations=recommendations,
+                         progression_recommendations=progression_recommendations,
+                         muscle_groups=recommender.muscle_groups,
+                         has_data=has_data)
+
+@app.route('/api/dashboard')
+@login_required
+def api_dashboard():
+    user_id = session['user_id']
+    print(f"DASHBOARD DEBUG: user_id from session = {user_id}")
+    user = User.query.get(user_id)
+    now = datetime.now()
+
+    # Calculate start of the week (Monday)
+    week_start = now - timedelta(days=now.weekday())
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Count workouts completed this week
+    workouts_this_week = UserExercise.query.filter(
+        UserExercise.user_id == user_id,
+        UserExercise.date >= week_start
+    ).count()
+
+    # Total workouts
+    total_workouts = UserExercise.query.filter_by(user_id=user_id).count()
+
+    # Efficiency
+    if total_workouts > 0:
+        efficiency = db.session.query(
+            func.sum(UserExercise.count) * 100 / func.sum(UserExercise.total_reps)
+        ).filter(UserExercise.user_id == user_id).scalar() or 0
+    else:
+        efficiency = 0
+
+    # Progress change (weekly progress)
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start
+    workouts_last_week = UserExercise.query.filter(
+        UserExercise.user_id == user_id,
+        UserExercise.date >= last_week_start,
+        UserExercise.date < last_week_end
+    ).count()
+    weekly_progress = 0
+    if workouts_last_week > 0:
+        weekly_progress = int(((workouts_this_week - workouts_last_week) / workouts_last_week) * 100)
+    elif workouts_this_week > 0:
+        weekly_progress = 100
+
+    # Workout streak (consecutive days with at least one workout)
+    streak = 0
+    current_date = now.date()
+    while True:
+        has_workout = UserExercise.query.filter(
+            UserExercise.user_id == user_id,
+            func.date(UserExercise.date) == current_date
+        ).first() is not None
+        if not has_workout:
+            break
+        streak += 1
+        current_date -= timedelta(days=1)
+
+    # Monthly activity (workouts this month)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    monthly_activity = UserExercise.query.filter(
+        UserExercise.user_id == user_id,
+        UserExercise.date >= month_start
+    ).count()
+
+    # Lifetime reps
+    lifetime_reps = db.session.query(func.sum(UserExercise.total_reps)).filter(UserExercise.user_id == user_id).scalar() or 0
+
+    # Weekly goal from profile
+    weekly_goal = user.ex_goal if user else 0
+
+    # Recent activity (last 10 workouts)
+    recent = UserExercise.query.filter_by(user_id=user_id).order_by(UserExercise.date.desc()).limit(10).all()
+    recent_activity = []
+    for r in recent:
+        exercise = Exercises.query.get(r.exercise_id)
+        recent_activity.append({
+            'date': r.date.strftime('%Y-%m-%d %H:%M'),
+            'exercise': exercise.name if exercise else 'Unknown',
+            'duration': getattr(r, 'duration', 0),
+        })
+
+    return jsonify({
+        'total_workouts': total_workouts,
+        'efficiency': round(efficiency),
+        'goals_achieved': workouts_this_week,
+        'progress_change': weekly_progress,
+        'workout_streak': streak,
+        'monthly_activity': monthly_activity,
+        'lifetime_reps': lifetime_reps,
+        'weekly_goal': weekly_goal,
+        'recent_activity': recent_activity
+    })
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing JSON data'}), 400
+
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not username or not email or not password:
+        return jsonify({'error': 'All fields are required'}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({'error': 'Username already exists'}), 400
+
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already registered'}), 400
+
+    user = User(username=username, email=email)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'message': 'Registration successful!'}), 201
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing JSON data'}), 400
+
+    # Handle Google authentication
+    if data.get('googleAuth'):
+        email = data.get('email')
+        google_id = data.get('googleId')
+        name = data.get('name')
+
+        if not email or not google_id:
+            return jsonify({'error': 'Missing required Google authentication data'}), 400
+
+        # Check if user exists with Google ID
+        user = User.query.filter_by(google_id=google_id).first()
+        
+        if not user:
+            # Check if user exists with the same email
+            user = User.query.filter_by(email=email).first()
+            if user:
+                # Update existing user with Google info
+                user.google_id = google_id
+                user.is_google_user = True
+                if name and not user.name:
+                    user.name = name
+            else:
+                # Create new user
+                user = User(
+                    email=email,
+                    google_id=google_id,
+                    is_google_user=True,
+                    name=name,
+                    username=email.split('@')[0]  # Use email prefix as username
+                )
+                db.session.add(user)
+            
+            db.session.commit()
+
+        session['user_id'] = user.id
+        session['is_google_user'] = True
+        return jsonify({
+            'message': 'Google login successful!',
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'name': user.name
+            }
+        }), 200
+
+    # Handle regular email/password login
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    
+    # Check if user exists and is not a Google user
+    if not user or user.is_google_user:
+        return jsonify({'error': 'Invalid credentials'}), 401
+        
+    # Only check password for non-Google users
+    if not user.check_password(password):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    session['user_id'] = user.id
+    return jsonify({'message': 'Login successful!'}), 200
+
+@app.route('/api/exercises')
+def api_exercises():
+    # Get all exercises without filtering
+    exercises = Exercises.query.all()
+    
+    # Prepare the response with image URLs and keys
+    name_to_key = {
+        'Barbell Squats': 'barbell_squats',
+        'Bicep Curls': 'bicep_curls',
+        'Shoulder Press': 'shoulder_press',
+        'Deadlift': 'deadlift',
+        'Lateral Raises': 'lateral_raises',
+    }
+    exercise_list = []
+    for ex in exercises:
+        # Get corresponding image URL
+        image_filename = ex.name.lower().replace(' ', '_') + '.gif'
+        image_url = url_for('static', filename=f'images/exercises/{image_filename}')
+        exercise_list.append({
+            'id': ex.id,
+            'name': ex.name,
+            'muscles_involved': ex.muscles_involved,
+            'link': ex.link,
+            'image_url': image_url,
+            'key': name_to_key.get(ex.name, None)
+        })
+    
+    return jsonify(exercise_list)
+
+@app.route('/api/profile')
+def api_profile():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    response_data = {
+        'id': user.id,
+        'username': user.username,
+        'name': user.name,
+        'email': user.email,
+        'height': getattr(user, 'height', None),
+        'weight': getattr(user, 'weight', None),
+        'goal': getattr(user, 'goal', None),
+        'profile_picture': getattr(user, 'profile_picture', None),
+        'rep_goal': getattr(user, 'rep_goal', None),
+        'ex_goal': getattr(user, 'ex_goal', None)
+    }
+    
+    print('Profile data retrieved:', response_data, file=sys.stderr)
+    return jsonify(response_data)
+
+@app.route('/api/profile/stats')
+def api_profile_stats():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    total_workouts = UserExercise.query.filter_by(user_id=user_id).count()
+    calories_burned = 0  # Placeholder
+    goals_achieved = 0  # Placeholder
+    return jsonify({
+        'total_workouts': total_workouts,
+        'calories_burned': calories_burned,
+        'goals_achieved': goals_achieved
+    })
+
+@app.route('/api/leaderboard')
+def api_leaderboard():
+    current_username = session.get('username')
+    # Total exercises leaderboard
+    total_exercises = db.session.query(
+        User.username,
+        db.func.count(UserExercise.id).label('exercise_count')
+    ).join(UserExercise, User.id == UserExercise.user_id).group_by(User.id).order_by(db.func.count(UserExercise.id).desc()).all()
+    total_exercises_list = [
+        {
+            'username': row[0],
+            'exercise_count': row[1],
+            'is_current_user': (row[0] == current_username)
+        } for row in total_exercises
+    ]
+    # Total reps leaderboard
+    total_reps = db.session.query(
+        User.username,
+        db.func.sum(UserExercise.count).label('total_reps')
+    ).join(UserExercise, User.id == UserExercise.user_id).group_by(User.id).order_by(db.func.sum(UserExercise.count).desc()).all()
+    total_reps_list = [
+        {
+            'username': row[0],
+            'total_reps': int(row[1] or 0),
+            'is_current_user': (row[0] == current_username)
+        } for row in total_reps
+    ]
+    return jsonify({
+        'total_exercises': total_exercises_list,
+        'total_reps': total_reps_list
+    })
+
+@app.route('/api/schedule')
+@login_required
+def api_schedule():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    schedules = WorkoutSchedule.query.filter_by(user_id=user_id).all()
+    # Get the current week's start date
+    current_date = datetime.now()
+    week_start = current_date - timedelta(days=current_date.weekday())
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    result = []
+    for s in schedules:
+        # Check if there's a completion record for this schedule in the current week
+        completion = ScheduleCompletion.query.filter(
+            ScheduleCompletion.schedule_id == s.id,
+            ScheduleCompletion.completed_at >= week_start
+        ).first()
+        exercise = Exercises.query.get(s.exercise_id)
+        result.append({
+            'id': s.id,
+            'exercise_id': s.exercise_id,
+            'exercise_name': exercise.name if exercise else 'Unknown',
+            'day_of_week': s.day_of_week,
+            'sets': s.sets,
+            'reps': s.reps,
+            'is_completed': completion is not None
+        })
+    return jsonify({'schedules': result})
+
+@app.route('/api/recommendations')
+@login_required
+def api_recommendations():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    recommender = WorkoutRecommender(user_id)
+    recs = recommender.get_recommendations()
+    # recs: {focus_areas, recommended_exercises, muscle_balance}
+    # Build muscle_groups for frontend
+    muscle_groups = []
+    for muscle, data in recs['muscle_balance'].items():
+        muscle_groups.append({
+            'name': muscle,
+            'percent': data['percent'],
+            'count': data['count']
+        })
+    # Build recommendations by muscle group
+    recommendations = {}
+    for muscle in recommender.muscle_groups:
+        recommendations[muscle] = recommender.muscle_groups[muscle]
+    # Progression recommendations
+    progression_recommendations = {}
+    for exercise in Exercises.query.all():
+        progression = recommender.get_progression_recommendation(exercise.id)
+        if progression:
+            progression_recommendations[exercise.name] = {
+                'rom': progression['current_avg_rom'],
+                'reps': progression['current_avg_reps'],
+                'suggestion': progression['suggestion'],
+                'recommendation': progression['recommendation']
+            }
+    return jsonify({
+        'muscle_groups': muscle_groups,
+        'recommendations': recommendations,
+        'focus_areas': recs['focus_areas'],
+        'progression_recommendations': progression_recommendations
+    })
+
+@app.route('/api/analyzed_videos')
+def api_analyzed_videos():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    videos = ExerciseUpload.query.filter_by(user_id=user_id).all()
+    return jsonify([
+        {
+            'id': v.id,
+            'exercise_type': v.exercise_type,
+            'video_path': v.video_path,
+            'feedback': v.feedback,
+            'notes': v.notes,
+            'created_at': v.created_at.isoformat() if hasattr(v, 'created_at') else None
+        }
+        for v in videos
+    ])
+
+@app.route('/api/profile/update', methods=['POST'])
+def api_profile_update():
+    user_id = session.get('user_id')
+    print('api_profile_update called', file=sys.stderr)
+    if not user_id:
+        print('Not logged in', file=sys.stderr)
+        return jsonify({'error': 'Not logged in'}), 401
+    user = User.query.get(user_id)
+    data = request.get_json()
+    print('Received data:', data, file=sys.stderr)
+    if not user or not data:
+        print('User not found or no data', file=sys.stderr)
+        return jsonify({'error': 'User not found or no data'}), 400
+    try:
+        # Validate and update fields only if changed and present
+        if 'name' in data and data['name'] and data['name'] != user.name:
+            user.name = data['name']
+        if 'height' in data and data['height'] not in (None, ''):
+            try:
+                user.height = float(data['height'])
+            except Exception as e:
+                print('Invalid height:', e, file=sys.stderr)
+        if 'weight' in data and data['weight'] not in (None, ''):
+            try:
+                user.weight = float(data['weight'])
+            except Exception as e:
+                print('Invalid weight:', e, file=sys.stderr)
+        if 'goal' in data and data['goal'] is not None:
+            user.goal = data['goal']
+        if 'rep_goal' in data and data['rep_goal'] is not None:
+            try:
+                user.rep_goal = int(data['rep_goal'])
+            except Exception as e:
+                print('Invalid rep_goal:', e, file=sys.stderr)
+        if 'ex_goal' in data and data['ex_goal'] is not None:
+            try:
+                user.ex_goal = int(data['ex_goal'])
+            except Exception as e:
+                print('Invalid ex_goal:', e, file=sys.stderr)
+        db.session.commit()
+        print('Profile updated successfully', file=sys.stderr)
+        # Return updated profile data
+        return jsonify({
+            'id': user.id,
+            'username': user.username,
+            'name': user.name,
+            'email': user.email,
+            'height': getattr(user, 'height', None),
+            'weight': getattr(user, 'weight', None),
+            'goal': getattr(user, 'goal', None),
+            'profile_picture': getattr(user, 'profile_picture', None),
+            'rep_goal': getattr(user, 'rep_goal', None),
+            'ex_goal': getattr(user, 'ex_goal', None),
+            'message': 'Profile updated'
+        })
+    except Exception as e:
+        print('Exception in profile update:', e, file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profile/change-password', methods=['POST'])
+def api_profile_change_password():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    user = User.query.get(user_id)
+    data = request.get_json()
+    if not user or not data:
+        return jsonify({'error': 'User not found or no data'}), 400
+    new_password = data.get('new_password')
+    if not new_password:
+        return jsonify({'error': 'No new password provided'}), 400
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'message': 'Password updated'})
+
+@app.route('/api/upload_exercise', methods=['POST'])
+def api_upload_exercise():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    if 'video' not in request.files:
+        return jsonify({'error': 'No video file part'}), 400
+    
+    video_file = request.files['video']
+    if video_file.filename == '':
+        return jsonify({'error': 'No selected video file'}), 400
+    
+    if not allowed_file(video_file.filename):
+        return jsonify({'error': 'Invalid file format. Supported formats: mp4, mov, avi'}), 400
+    
+    exercise_type = request.form.get('exercise_type')
+    notes = request.form.get('notes', '')
+
+    print('DEBUG: exercise_type:', exercise_type)
+    
+    # Save uploaded video
+    video_filename = f"{exercise_type}_{int(time.time())}.mp4"
+    video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+    print('DEBUG: video_path:', video_path)
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(video_path), exist_ok=True)
+    
+    video_file.save(video_path)
+    
+    # Analyze the video based on exercise type
+    analysis_result = None
+    if exercise_type == 'bicep_curl':
+        analysis_result = analyze_bicep_curls_video(video_path)
+    elif exercise_type == 'squat':
+        analysis_result = analyze_squat_video(video_path)
+    elif exercise_type == 'shoulder_press':
+        analysis_result = analyze_shoulder_press_video(video_path)
+    elif exercise_type == 'deadlift':
+        analysis_result = analyze_deadlift_video(video_path)
+    elif exercise_type == 'lateral_raise':
+        analysis_result = analyze_lateral_raise_video(video_path)
+
+    print('DEBUG: analysis_result:', analysis_result)
+    
+    if not analysis_result:
+        return jsonify({'error': 'Error analyzing video: Unknown error (analysis_result is None)'}), 500
+    if 'error' in analysis_result:
+        return jsonify({'error': 'Error analyzing video: ' + analysis_result.get('error', 'Unknown error')}), 500
+    
+    # Get the analyzed video path from the result
+    analyzed_filename = analysis_result.get('video_path', f"analyzed_{video_filename}")
+    
+    # Save exercise data
+    exercise = ExerciseUpload(
+        user_id=user_id,
+        exercise_type=exercise_type,
+        video_path=analyzed_filename,
+        feedback='\n'.join(analysis_result.get('feedback', [])),
+        notes=notes
+    )
+    db.session.add(exercise)
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Exercise video uploaded and analyzed successfully!',
+        'analysis': analysis_result
+    })
+
+@app.route('/api/profile/picture', methods=['POST'])
+def api_profile_picture():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    if 'profile_picture' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['profile_picture']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    # Save the file
+    filename = f"profile_{user_id}_{int(time.time())}.{file.filename.rsplit('.', 1)[1].lower()}"
+    save_path = os.path.join('uploads', 'profile_pictures')
+    os.makedirs(save_path, exist_ok=True)
+    file_path = os.path.join(save_path, filename)
+    file.save(file_path)
+
+    # Update user profile_picture field (store relative path)
+    user.profile_picture = f"/{file_path.replace(os.sep, '/')}"
+    db.session.commit()
+
+    return jsonify({'profile_picture_url': user.profile_picture})
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin')
+    # Allow specific origins
+    allowed_origins = ['http://localhost:5173']
+    # Also allow any ngrok domains
+    if origin and ('ngrok.io' in origin or 'ngrok-free.app' in origin):
+        allowed_origins.append(origin)
+    
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+    return response
+
+# Add a global error handler to ensure CORS headers on error responses
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    print('Exception:', e)
+    print(traceback.format_exc())
+    response = make_response({'error': str(e)}, 500)
+    
+    origin = request.headers.get('Origin')
+    # Allow specific origins
+    allowed_origins = ['http://localhost:5173']
+    # Also allow any ngrok domains
+    if origin and ('ngrok.io' in origin or 'ngrok-free.app' in origin):
+        allowed_origins.append(origin)
+    
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+    return response
+
+@app.route('/api/add_schedule', methods=['POST'])
+@login_required
+def api_add_schedule():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing JSON data'}), 400
+
+    exercise_id = data.get('exercise_id')
+    day_of_week = int(data.get('day_of_week'))
+    sets = int(data.get('sets'))
+    reps = int(data.get('reps'))
+
+    new_schedule = WorkoutSchedule(
+        user_id=session['user_id'],
+        exercise_id=exercise_id,
+        day_of_week=day_of_week,
+        sets=sets,
+        reps=reps
+    )
+
+    db.session.add(new_schedule)
+    db.session.commit()
+
+    return jsonify({'message': 'Exercise added to schedule successfully!'})
+
+@app.route('/api/schedule/today')
+@login_required
+def api_schedule_today():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not logged in'}), 401
+    # Use Sunday=0, Monday=1, ..., Saturday=6
+    today = (datetime.now().weekday() + 1) % 7
+    schedules = WorkoutSchedule.query.filter_by(user_id=user_id, day_of_week=today).all()
+    result = []
+    for s in schedules:
+        exercise = Exercises.query.get(s.exercise_id)
+        result.append({
+            'id': s.id,
+            'exercise_id': s.exercise_id,
+            'exercise_name': exercise.name if exercise else 'Unknown',
+            'sets': s.sets,
+            'reps': s.reps
+        })
+    return jsonify({'today': result})
+
+@app.route('/api/update_schedule_status/<int:schedule_id>', methods=['POST'])
+@login_required
+def api_update_schedule_status(schedule_id):
+    return update_schedule_status(schedule_id)
+
+@app.route('/api/delete_schedule/<int:schedule_id>', methods=['DELETE'])
+@login_required
+def api_delete_schedule(schedule_id):
+    try:
+        schedule = WorkoutSchedule.query.get_or_404(schedule_id)
+        if schedule.user_id != session['user_id']:
+            return jsonify({'error': 'Unauthorized access'}), 403
+        # Delete related ScheduleCompletion records first
+        ScheduleCompletion.query.filter_by(schedule_id=schedule_id).delete()
+        db.session.delete(schedule)
+        db.session.commit()
+        return jsonify({'message': 'Exercise removed from schedule successfully!'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/google-auth', methods=['POST'])
+def google_auth():
+    try:
+        # Get the token from the request
+        token = request.json.get('token')
+        if not token:
+            return jsonify({'error': 'No token provided'}), 400
+
+        # Verify the token with Google
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(),
+            os.getenv('GOOGLE_CLIENT_ID')
+        )
+
+        # Get user info from the token
+        google_id = idinfo['sub']
+        email = idinfo['email']
+        name = idinfo.get('name', '')
+        picture = idinfo.get('picture', '')
+
+        # Check if user exists
+        user = User.query.filter_by(google_id=google_id).first()
+        
+        if not user:
+            # Check if user exists with the same email
+            user = User.query.filter_by(email=email).first()
+            if user:
+                # Update existing user with Google info
+                user.google_id = google_id
+                user.is_google_user = True
+                if not user.profile_picture:
+                    user.profile_picture = picture
+                if not user.name:
+                    user.name = name
+            else:
+                # Create new user
+                user = User(
+                    email=email,
+                    google_id=google_id,
+                    is_google_user=True,
+                    name=name,
+                    profile_picture=picture,
+                    username=email.split('@')[0]  # Use email prefix as username
+                )
+                db.session.add(user)
+            
+            db.session.commit()
+
+        # Create session
+        session['user_id'] = user.id
+        session['is_google_user'] = True
+
+        return jsonify({
+            'message': 'Login successful',
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'name': user.name,
+                'profile_picture': user.profile_picture
+            }
+        }), 200
+
+    except ValueError as e:
+        return jsonify({'error': 'Invalid token'}), 401
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     app.debug = True  # Enable debug mode

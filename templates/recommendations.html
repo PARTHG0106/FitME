@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4 font-bold text-2xl">Your Personalized Workout Recommendations</h2>
+    {% if not has_data %}
+        <div class="card shadow-lg p-6 text-center bg-base-200">
+            <h3 class="text-xl font-semibold mb-2">No workout data yet!</h3>
+            <p class="mb-2">Start your first workout to see personalized recommendations and progress here.</p>
+            <a href="{{ url_for('exercises') }}" class="btn btn-primary mt-2">Start Workout</a>
+        </div>
+    {% else %}
+    <!-- Muscle Balance Section -->
+    <div class="card mb-6 shadow-lg">
+        <div class="card-header bg-primary text-white rounded-t">
+            <h3 class="text-lg font-semibold">Muscle Group Balance</h3>
+        </div>
+        <div class="card-body">
+            <div class="space-y-4">
+                {% for muscle, data in recommendations.muscle_balance.items() %}
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <span class="font-semibold">{{ muscle|title }}</span>
+                        <span class="text-sm">{{ '%.1f'|format(data.percent) }}% ({{ data.count }} workouts)</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div class="bg-green-500 h-4 rounded-full" style="width: {{ data.percent }}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Focus Areas Section -->
+    <div class="card mb-6 shadow-lg">
+        <div class="card-header bg-accent text-white rounded-t">
+            <h3 class="text-lg font-semibold">Recommended Focus Areas</h3>
+        </div>
+        <div class="card-body">
+            <p class="mb-4 text-base-content/70">These muscle groups need more attention based on your recent workout history:</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% for muscle in recommendations.focus_areas %}
+                <div class="bg-base-200 rounded-lg p-4 shadow card-hover">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-dumbbell mr-2 text-primary"></i>
+                        <span class="font-bold text-lg">{{ muscle|title }}</span>
+                    </div>
+                    <ul class="list-disc ml-6">
+                        {% for exercise in recommendations.recommended_exercises %}
+                        {% if muscle in muscle_groups and exercise in muscle_groups[muscle] %}
+                        <li>
+                            <span class="badge badge-primary badge-outline mr-2">{{ exercise|replace('_', ' ')|title }}</span>
+                        </li>
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Progression Recommendations -->
+    <div class="card shadow-lg">
+        <div class="card-header bg-secondary text-white rounded-t">
+            <h3 class="text-lg font-semibold">Progression Recommendations</h3>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Exercise</th>
+                            <th>Current Performance</th>
+                            <th>Recommendation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exercise, data in progression_recommendations.items() %}
+                        <tr>
+                            <td class="font-semibold">{{ exercise|replace('_', ' ')|title }}</td>
+                            <td>
+                                <span class="badge badge-success">ROM: {{ data.current_avg_rom }}%</span><br>
+                                <span class="badge badge-info">Avg Reps: {{ data.current_avg_reps }}</span>
+                            </td>
+                            <td>
+                                <span class="font-bold">{{ data.suggestion }}</span><br>
+                                <span>{{ data.recommendation }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %} 

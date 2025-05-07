@@ -5,7 +5,7 @@
 {% block content %}
 {% include 'partials/schedule_widget.html' %}
 
-<div class="container mx-auto px-4">
+<div class="container mx-auto px-4 pb-32">
     <!-- Welcome Section -->
     <div class="text-center mb-12">
         <h1 class="text-4xl font-bold mb-4 gradient-text">Welcome to Your Fitness Dashboard</h1>
@@ -76,7 +76,7 @@
                     <span class="text-sm">Squats</span>
                 </a>
                 <a href="{{ url_for('start', exercise='deadlift') }}" class=" btn_start btn btn-primary flex flex-col items-center justify-center p-4">
-                    <img src="https://www.fitstream.com/images/weight-training/exercises/deadlift-one.png" 
+                    <img src="https://www.inspireusafoundation.org/wp-content/uploads/2023/01/barbell-deadlift-front-view.gif" 
                          alt="Deadlift" 
                          class="h-20 w-20 object-contain mb-2">
                     <span class="text-sm">Deadlift</span>
@@ -85,9 +85,8 @@
         </div>
     </div>
 
-
     <!-- Progress Overview -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
                 <h3 class="card-title">
@@ -138,11 +137,12 @@
                 </div>
                 <div class="card-body">
                     <div class="col-span-2">
-                        {% include 'partials/schedule_widget.html' %}
+                        <!-- Removed duplicate schedule widget include from inside card -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% include 'partials/schedule_widget.html' %}
 {% endblock %}

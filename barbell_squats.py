@@ -7,6 +7,7 @@ import time
 from flask import redirect, url_for
 import os
 import subprocess
+from datetime import datetime
 
 def calculate_angle(a, b, c):
     a = np.array(a)
@@ -39,8 +40,37 @@ def gen_frames(user_id, rep_goal):
 
     camera = cv2.VideoCapture(0)
     if not camera.isOpened():
-        print("Error: Camera could not be opened.")
+        print("[barbell_squats] Error: Camera could not be opened.")
         return
+    else:
+        print("[barbell_squats] Camera opened successfully.")
+
+    # --- COUNTDOWN PHASE ---
+    start_time = time.time()
+    while True:
+        success, frame = camera.read()
+        if not success:
+            print("[barbell_squats] Camera Fail during countdown")
+            break
+        elapsed_time = time.time() - start_time
+        if elapsed_time < 5:
+            remaining_time = 5 - int(elapsed_time)
+            font_scale = 9
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            thickness = 15
+            text = str(remaining_time)
+            text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+            text_x = (frame.shape[1] - text_size[0]) // 2
+            text_y = (frame.shape[0] + text_size[1]) // 2
+            cv2.putText(frame, text, (text_x, text_y), font, font_scale, (0, 255, 0), thickness, cv2.LINE_AA)
+            cv2.putText(frame, 'Get into starting position!!!', (185, 50),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        else:
+            break
 
     state_tracker = {
         'state_seq': [],
@@ -58,14 +88,17 @@ def gen_frames(user_id, rep_goal):
         'IMPROPER_SQUAT': 0,
         'squat_attempt': 0,
         'current_mistakes': {},
-        'mistakes': []
+        'mistakes': [],
+        'good_reps': 0,
+        'start_time': time.time(),
+        'tut_time': 0.0
     }
 
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while True:
             success, frame = camera.read()
             if not success:
-                print("Failed to read frame from camera.")
+                print("[barbell_squats] Failed to read frame from camera.")
                 break
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -75,68 +108,95 @@ def gen_frames(user_id, rep_goal):
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             try:
-                landmarks = results.pose_landmarks.landmark
-                
-                # Get coordinates
-                left_hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-                left_knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-                left_ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
-                
-                # Calculate angles
-                knee_angle = calculate_angle(left_hip, left_knee, left_ankle)
-                
-                # Draw landmarks
-                mp_drawing.draw_landmarks(
-                    frame,
-                    results.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS
-                )
+                if results.pose_landmarks is not None:
+                    landmarks = results.pose_landmarks.landmark
+                    
+                    # Get coordinates
+                    left_hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                    left_knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+                    left_ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+                    left_shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                    
+                    # Calculate angles
+                    knee_angle = calculate_angle(left_hip, left_knee, left_ankle)
+                    hip_angle = calculate_angle(left_shoulder, left_hip, left_knee)
+                    
+                    # Draw landmarks
+                    mp_drawing.draw_landmarks(
+                        frame,
+                        results.pose_landmarks,
+                        mp_pose.POSE_CONNECTIONS
+                    )
 
-                # Display angle
-                cv2.putText(frame, str(int(knee_angle)), 
-                           tuple(np.multiply(left_knee, [640, 480]).astype(int)),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+                    # Display angles
+                    cv2.putText(frame, f"Knee: {int(knee_angle)}°", 
+                               tuple(np.multiply(left_knee, [640, 480]).astype(int)),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+                    cv2.putText(frame, f"Hip: {int(hip_angle)}°",
+                               tuple(np.multiply(left_hip, [640, 480]).astype(int)),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
 
-                # Analyze form
-                if knee_angle < 80:
-                        feedback = "Squat deeper!"
-                elif knee_angle > 140:
-                        feedback = "Too high!"
-                else:
-                        feedback = "Good form!"
+                    # Analyze form
+                    feedback = []
+                    if knee_angle < 80:
+                        if state_tracker['prev_state'] != 'down':
+                            state_tracker['squat_attempt'] += 1
+                            state_tracker['prev_state'] = 'down'
+                            state_tracker['start_time'] = time.time()
+                        feedback.append("Good depth!")
+                    elif knee_angle > 140:
+                        if state_tracker['prev_state'] == 'down':
+                            state_tracker['SQUAT_COUNT'] += 1
+                            state_tracker['prev_state'] = 'up'
+                            # Calculate time under tension for this rep
+                            rep_time = time.time() - state_tracker['start_time']
+                            state_tracker['tut_time'] += rep_time
+                            if rep_time >= 2.0:  # Good rep if held for at least 2 seconds
+                                state_tracker['good_reps'] += 1
+                        feedback.append("Stand up straight!")
+                    else:
+                        feedback.append("Squat deeper!")
 
-                cv2.putText(frame, feedback, (30, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    if hip_angle < 70:
+                        feedback.append("Keep chest up!")
+                    elif hip_angle > 100:
+                        feedback.append("Bend at hips!")
 
-                # Count reps
-                if knee_angle < 80 and state_tracker['prev_state'] != 'down':
-                    state_tracker['squat_attempt'] += 1
-                    state_tracker['prev_state'] = 'down'
-                elif knee_angle > 140 and state_tracker['prev_state'] == 'down':
-                    state_tracker['SQUAT_COUNT'] += 1
-                    state_tracker['prev_state'] = 'up'
+                    # Display feedback
+                    for i, text in enumerate(feedback):
+                        cv2.putText(frame, text, (30, 50 + i*30), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
-                # Display rep count
-                cv2.putText(frame, f'Reps: {state_tracker["SQUAT_COUNT"]}', (30, 100),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    # Display rep count and progress
+                    cv2.putText(frame, f'Reps: {state_tracker["SQUAT_COUNT"]}/{rep_goal}', (30, 150),
+                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.putText(frame, f'Good Reps: {state_tracker["good_reps"]}', (30, 190),
+                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
-                # Check if rep goal is reached
-                if state_tracker['SQUAT_COUNT'] >= rep_goal:
-                    # Save exercise data to database
-                                new_exercise = UserExercise(
-                                    user_id=user_id,
-                        exercise_id=3,  # Barbell Squats ID
-                                    total_reps=rep_goal,
-                        rom_score=rep_goal,  # Assuming all reps were good for now
-                        tut_score=0.0,  # Time under tension score
-                                    count=rep_goal
-                                )
-                                db.session.add(new_exercise)
-                                db.session.commit()
-                break
+                    # Check if rep goal is reached
+                    if state_tracker['SQUAT_COUNT'] >= rep_goal:
+                        print(f"[barbell_squats] Rep goal reached: {rep_goal}")
+                        from app import app
+                        with app.app_context():
+                            duration = int(time.time() - start_time)
+                            new_exercise = UserExercise(
+                                user_id=user_id,
+                                exercise_id=3,  # Barbell Squats ID
+                                total_reps=rep_goal,
+                                rom_score=state_tracker['good_reps'],  # Number of good reps
+                                tut_score=state_tracker['tut_time'],  # Total time under tension
+                                count=rep_goal,
+                                date=datetime.now(),
+                                duration=duration
+                            )
+                            db.session.add(new_exercise)
+                            db.session.commit()
+                            print(f"[DEBUG] Saved UserExercise: user_id={new_exercise.user_id}, exercise_id={new_exercise.exercise_id}, reps={new_exercise.total_reps}, date={new_exercise.date}")
+                        break
 
             except Exception as e:
-                print(f"Error during pose processing: {e}")
+                print(f"[barbell_squats] Error during pose processing: {e}")
+                continue
 
             ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
@@ -457,7 +517,15 @@ def analyze_squat_video(video_path):
             print(f"FFmpeg error: {ffmpeg_result.stderr}")
     except Exception as e:
         print(f"FFmpeg conversion failed: {e}")
-    
+
+    # --- Output file size check and logging ---
+    min_valid_size = 100 * 1024  # 100 KB
+    if not os.path.exists(output_path) or os.path.getsize(output_path) < min_valid_size:
+        print(f"ERROR: Output video file {output_path} is missing or too small ({os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes)")
+        return {"error": "Failed to generate a valid analyzed video. Please check your input and FFmpeg installation."}
+    else:
+        print(f"SUCCESS: Output video file {output_path} created, size: {os.path.getsize(output_path)} bytes")
+
     return {
         'feedback': unique_feedback, # Overall unique issues
         'video_path': video_filename,

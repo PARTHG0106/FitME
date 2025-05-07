@@ -12,7 +12,8 @@
         </div>
 
         <!-- Exercise Categories -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2
+         gap-6 mb-8">
             <!-- Upper Body -->
             <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
@@ -20,17 +21,35 @@
                         <i class="fas fa-dumbbell text-primary mr-2"></i>
                         Upper Body
                     </h2>
-                    <ul class="space-y-2">
+                    <ul class="space-y-4">
                         <li>
                             <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('shoulder_press')">
-                                <i class="fas fa-chevron-right mr-2"></i>
-                                Shoulder Press
+                                <img src="{{ url_for('static', filename='images/exercises/shoulder_press.gif') }}" alt="Shoulder Press" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Shoulder Press</span>
                             </button>
                         </li>
                         <li>
                             <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('bicep_curl')">
-                                <i class="fas fa-chevron-right mr-2"></i>
-                                Bicep Curls
+                                <img src="{{ url_for('static', filename='images/exercises/bicep_curls.gif') }}" alt="Bicep Curls" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Bicep Curls</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('lateral_raise')">
+                                <img src="{{ url_for('static', filename='images/exercises/lateral_raise_new.gif') }}" alt="Lateral Raise" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Lateral Raise</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('push_up')">
+                                <img src="{{ url_for('static', filename='images/exercises/push_up_new.gif') }}" alt="Push Ups" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Push Ups</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('pull_up')">
+                                <img src="{{ url_for('static', filename='images/exercises/pull_up.gif') }}" alt="Pull Ups" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Pull Ups</span>
                             </button>
                         </li>
                     </ul>
@@ -44,17 +63,53 @@
                         <i class="fas fa-running text-primary mr-2"></i>
                         Lower Body
                     </h2>
-                    <ul class="space-y-2">
+                    <ul class="space-y-4">
                         <li>
                             <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('squat')">
-                                <i class="fas fa-chevron-right mr-2"></i>
-                                Squats
+                                <img src="{{ url_for('static', filename='images/exercises/barbell_squats.gif') }}" alt="Barbell Squats" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Barbell Squats</span>
                             </button>
                         </li>
                         <li>
                             <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('deadlift')">
-                                <i class="fas fa-chevron-right mr-2"></i>
-                                Deadlift
+                                <img src="{{ url_for('static', filename='images/exercises/deadlift.gif') }}" alt="Deadlift" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Deadlift</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('lunges')">
+                                <img src="{{ url_for('static', filename='images/exercises/lunges.gif') }}" alt="Lunges" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Lunges</span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Core -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-xl mb-4">
+                        <i class="fas fa-fire text-primary mr-2"></i>
+                        Core
+                    </h2>
+                    <ul class="space-y-4">
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('russian_twist')">
+                                <img src="{{ url_for('static', filename='images/exercises/russian_twist_new3.gif') }}" alt="Russian Twist" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Russian Twist</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('plank')">
+                                <img src="{{ url_for('static', filename='images/exercises/plank.gif') }}" alt="Body Saw Plank" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Body Saw Plank</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="btn btn-ghost w-full justify-start" onclick="selectExercise('crunches')">
+                                <img src="{{ url_for('static', filename='images/exercises/crunches.gif') }}" alt="Crunches" class="w-10 h-10 mr-3 rounded-md">
+                                <span>Crunches</span>
                             </button>
                         </li>
                     </ul>
@@ -73,10 +128,17 @@
                         </label>
                         <select name="exercise_type" id="exerciseSelect" class="select select-bordered w-full" required>
                             <option value="" disabled selected>Select an exercise</option>
-                            <option value="squat">Squat</option>
-                            <option value="deadlift">Deadlift</option>
+                            <option value="squat">Barbell Squats</option>
+                            <option value="bicep_curl">Bicep Curls</option>
                             <option value="shoulder_press">Shoulder Press</option>
-                            <option value="bicep_curl">Bicep Curl</option>
+                            <option value="deadlift">Deadlift</option>
+                            <option value="lateral_raise">Lateral Raise</option>
+                            <option value="push_up">Push Ups</option>
+                            <option value="pull_up">Pull Ups</option>
+                            <option value="lunges">Lunges</option>
+                            <option value="russian_twist">Russian Twist</option>
+                            <option value="plank">Body Saw Plank</option>
+                            <option value="crunches">Crunches</option>
                         </select>
                     </div>
 

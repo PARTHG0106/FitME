@@ -44,6 +44,7 @@
                     <li><a href="{{ url_for('upload_exercise') }}" class="text-primary hover:bg-primary/10">Upload Exercise</a></li>
                     <li><a href="{{ url_for('schedule') }}" class="text-primary hover:bg-primary/10">Schedule</a></li>
                     <li><a href="{{ url_for('leaderboard') }}" class="text-primary hover:bg-primary/10">Leaderboard</a></li>
+                    <li><a href="{{ url_for('recommendations') }}" class="text-primary hover:bg-primary/10">Recommendations</a></li>
                     <li><a href="{{ url_for('profile') }}" class="text-primary hover:bg-primary/10">Profile</a></li>
                 </ul>
             </div>
@@ -51,11 +52,13 @@
         </div>
         <div class="navbar-center hidden lg:flex">
             <ul class="menu menu-horizontal px-1">
-                <li><a href="{{ url_for('mainboard') }}" class="hover:text-primary-content hover:bg-primary/10">Dashboard</a></li>
-                <li><a href="{{ url_for('exercises') }}" class="hover:text-primary-content hover:bg-primary/10">Exercises</a></li>
-                <li><a href="{{ url_for('upload_exercise') }}" class="hover:text-primary-content hover:bg-primary/10">Upload Exercise</a></li>
-                <li><a href="{{ url_for('schedule') }}" class="hover:text-primary-content hover:bg-primary/10">Schedule</a></li>
-                <li><a href="{{ url_for('leaderboard') }}" class="hover:text-primary-content hover:bg-primary/10">Leaderboard</a></li>
+                <li><a href="{{ url_for('mainboard') }}" class="text-white hover:bg-white/10">Dashboard</a></li>
+                <li><a href="{{ url_for('exercises') }}" class="text-white hover:bg-white/10">Exercises</a></li>
+                <li><a href="{{ url_for('upload_exercise') }}" class="text-white hover:bg-white/10">Upload Exercise</a></li>
+                <li><a href="{{ url_for('schedule') }}" class="text-white hover:bg-white/10">Schedule</a></li>
+                <li><a href="{{ url_for('leaderboard') }}" class="text-white hover:bg-white/10">Leaderboard</a></li>
+                <li><a href="{{ url_for('recommendations') }}" class="text-white hover:bg-white/10">Recommendations</a></li>
+                <li><a href="{{ url_for('profile') }}" class="text-white hover:bg-white/10">Profile</a></li>
             </ul>
         </div>
         <div class="navbar-end">
@@ -78,11 +81,11 @@
     </div>
 
     <!-- Main Content -->
-    <main class="flex-grow container mx-auto px-4 py-8">
+    <main class="flex-grow container mx-auto px-0 py-0">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert {% if category == 'error' or category == 'danger' %}bg-red-500 text-white{% else %}alert-{{ category }}{% endif %} shadow-lg mb-4">
+                    <div class="alert {% if category == 'error' or category == 'danger' %}bg-red-500 text-white{% else %}alert-{{ category }}{% endif %} shadow-lg mt-4 mb-4">
                         <div>
                             {% if category == 'success' %}
                                 <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

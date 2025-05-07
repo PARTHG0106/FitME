@@ -14,7 +14,7 @@
         </div>
 
         <!-- Exercise Categories -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
             <!-- Upper Body -->
             <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
@@ -22,20 +22,42 @@
                         <i class="fas fa-dumbbell text-primary mr-2"></i>
                         Upper Body
                     </h2>
-                    <ul class="space-y-2">
+                    <ul class="space-y-4">
                         <li>
-                            <a href="{{ url_for('exercises', exercise='shoulder_press') }}" class="flex items-center hover:text-primary">
+                            <a href="{{ url_for('start_page', exercise='shoulder_press') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/shoulder_press.gif') }}" alt="Shoulder Press" class="w-12 h-12 mr-3 rounded-md">
                                 <i class="fas fa-chevron-right mr-2"></i>
                                 Shoulder Press
                             </a>
                         </li>
                         <li>
-                            <a href="{{ url_for('exercises', exercise='dumbbell_curls') }}" class="flex items-center hover:text-primary">
+                            <a href="{{ url_for('start_page', exercise='bicep_curls') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/bicep_curls.gif') }}" alt="Bicep Curls" class="w-12 h-12 mr-3 rounded-md">
                                 <i class="fas fa-chevron-right mr-2"></i>
                                 Bicep Curls
                             </a>
                         </li>
-                        
+                        <li>
+                            <a href="{{ url_for('start_page', exercise='lateral_raises') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/lateral_raise_new.gif') }}" alt="Lateral Raise" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Lateral Raise
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='push_up') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/push_up_new.gif') }}" alt="Push Ups" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Push Ups
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='pull_up') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/pull_up.gif') }}" alt="Pull Ups" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Pull Ups
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </div>
@@ -47,24 +69,64 @@
                         <i class="fas fa-running text-primary mr-2"></i>
                         Lower Body
                     </h2>
-                    <ul class="space-y-2">
+                    <ul class="space-y-4">
                         <li>
-                            <a href="{{ url_for('exercises', exercise='barbell_squats') }}" class="flex items-center hover:text-primary">
+                            <a href="{{ url_for('start_page', exercise='barbell_squats') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/barbell_squats.gif') }}" alt="Barbell Squats" class="w-12 h-12 mr-3 rounded-md">
                                 <i class="fas fa-chevron-right mr-2"></i>
                                 Barbell Squats
                             </a>
                         </li>
                         <li>
-                            <a href="{{ url_for('exercises', exercise='deadlift') }}" class="flex items-center hover:text-primary">
+                            <a href="{{ url_for('start_page', exercise='deadlift') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/deadlift.gif') }}" alt="Deadlift" class="w-12 h-12 mr-3 rounded-md">
                                 <i class="fas fa-chevron-right mr-2"></i>
                                 Deadlift
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='lunges') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/lunges.gif') }}" alt="Lunges" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Lunges
                             </a>
                         </li>
                     </ul>
                 </div>
             </div>
-
-           
+            
+            <!-- Core -->
+            <div class="card bg-base-100 shadow-xl md:col-span-2">
+                <div class="card-body">
+                    <h2 class="card-title text-xl mb-4">
+                        <i class="fas fa-fire text-primary mr-2"></i>
+                        Core
+                    </h2>
+                    <ul class="space-y-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='russian_twist') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/russian_twist_new3.gif') }}" alt="Russian Twist" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Russian Twist
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='plank') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/plank.gif') }}" alt="Body Saw Plank" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Body Saw Plank
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('exercises', exercise='crunches') }}" class="flex items-center hover:text-primary">
+                                <img src="{{ url_for('static', filename='images/exercises/crunches.gif') }}" alt="Crunches" class="w-12 h-12 mr-3 rounded-md">
+                                <i class="fas fa-chevron-right mr-2"></i>
+                                Crunches
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
         <!-- Exercise Video Section -->
@@ -86,23 +148,6 @@
             </div>
         </div>
         {% endif %}
-
-        <!-- Upload Section -->
-        <div class="card bg-base-100 shadow-xl mt-8">
-            <div class="card-body">
-                <h2 class="card-title text-xl mb-4">
-                    <i class="fas fa-upload text-primary mr-2"></i>
-                    Upload Your Exercise Video
-                </h2>
-                <p class="text-base-content/70 mb-4">
-                    Want to get your form analyzed? Upload a video of your exercise and get instant feedback!
-                </p>
-                <a href="{{ url_for('upload_exercise') }}" class="btn btn-primary">
-                    <i class="fas fa-upload mr-2"></i>
-                    Upload Video
-                </a>
-            </div>
-        </div>
     </div>
 </div>
 

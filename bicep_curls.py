@@ -51,6 +51,7 @@ def gen_frames(user_id, rep_goal):
 
     # Start timer for initial countdown
     start_time = time.time()
+    workout_start_time = time.time()  # Track workout start
 
     while True:
         success, frame = camera.read()
@@ -177,6 +178,8 @@ def gen_frames(user_id, rep_goal):
 
                     if repetition_count >= rep_goal:
                         end_time = time.time() + 5
+                        workout_end_time = time.time()  # Track workout end
+                        duration_seconds = int(workout_end_time - workout_start_time)
 
                         while time.time() < end_time:
                             success, frame = camera.read()
@@ -199,32 +202,25 @@ def gen_frames(user_id, rep_goal):
                             frame = buffer.tobytes()
                             yield (b'--frame\r\n'
                                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-                        try: # Do not visit feedback until camera switches off or the terminal prints data transferred!
+                        # Save workout data to the database
+                        try:
                             from app import app
-
                             with app.app_context():
-                                print(user_id, rom_score)
                                 new_exercise = UserExercise(
                                     user_id=user_id,
                                     exercise_id=exercise_id,
                                     total_reps=rep_goal,
                                     rom_score=total_rom_score,
                                     tut_score=total_tut_score,
-                                    count=rep_goal
+                                    count=rep_goal,
+                                    duration=duration_seconds
                                 )
                                 db.session.add(new_exercise)
                                 db.session.commit()
-                                print('data transferred!')
-
-                                ex_info.clear()
-                                repetition_count = 0
-                                redirect_url = '/dash/'
-                                return f'<html><head><meta http-equiv="refresh" content="0; url={redirect_url}" /></head><body></body></html>'
+                                print('Workout data saved!')
                         except Exception as e:
-                            print(f"Error while appending to db: {e}")
-                        finally:
-                            break
+                            print(f"Error saving workout data: {e}")
+                        break
 
             except Exception as e:
                 print(f"Error during pose processing: {e}")
