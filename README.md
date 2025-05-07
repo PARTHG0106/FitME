@@ -1,79 +1,136 @@
-# Fit Me - AI-Powered Exercise Form Coach
+# FitME - AI-Powered Gym Tracking Application
 
-Fit Me is a web application that uses AI to analyze exercise form in real-time, providing instant feedback and guidance to users during their workouts.
+FitME is an innovative gym tracking application that uses artificial intelligence to help users perform exercises correctly and track their fitness progress. The application features real-time pose estimation, exercise form correction, and personalized workout recommendations.
 
 ## Features
 
-- Real-time exercise form analysis using AI
-- Personalized workout schedules
-- Exercise library with detailed instructions
-- Progress tracking and analytics
-- Video upload and analysis
-- User authentication and profiles
+- **AI-Powered Exercise Form Detection**
+  - Real-time pose estimation
+  - Form correction feedback
+  - Exercise repetition counting
 
-## Tech Stack
+- **User Authentication**
+  - Email/Password registration
+  - Google Sign-In integration
+  - Secure session management
 
-- **Backend**: Python, Flask
-- **Frontend**: HTML, CSS, JavaScript
-- **Database**: SQLite
-- **AI**: MediaPipe for pose detection
-- **Deployment**: Local development server
+- **Exercise Library**
+  - Comprehensive collection of exercises
+  - Animated GIF demonstrations
+  - Detailed form instructions
 
-## Setup Instructions
+- **Personalized Dashboard**
+  - Progress tracking
+  - Exercise history
+  - Performance analytics
 
-1. Clone the repository:
+- **Workout Recommendations**
+  - AI-based exercise suggestions
+  - Personalized workout plans
+  - Difficulty level adaptation
+
+## Technology Stack
+
+### Frontend
+- React.js
+- Chakra UI
+- Framer Motion
+- TensorFlow.js (for pose estimation)
+
+### Backend
+- Flask (Python)
+- SQLAlchemy
+- OpenCV
+- MediaPipe
+
+### Authentication
+- JWT
+- Google OAuth 2.0
+
+### Database
+- SQLite
+
+## Getting Started
+
+### Prerequisites
+- Python 3.8+
+- Node.js 14+
+- npm or yarn
+- Webcam (for exercise tracking)
+
+### Installation
+
+1. Clone the repository
 ```bash
-git clone https://github.com/PARTHG0106/Mini-II.git
-cd Mini-II
+git clone https://github.com/PARTHG0106/FitME.git
+cd FitME
 ```
 
-2. Create and activate a virtual environment:
+2. Set up the Python virtual environment
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-4. Initialize the database:
+3. Install frontend dependencies
+```bash
+npm install
+```
+
+4. Set up environment variables
+Create a `.env` file in the root directory and add:
+```
+FLASK_APP=app.py
+FLASK_ENV=development
+SECRET_KEY=your_secret_key
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+5. Initialize the database
 ```bash
 python init_db.py
 ```
 
-5. Run the application:
+### Running the Application
+
+1. Start the Flask backend
 ```bash
-python app.py
+python run_locally.py
 ```
 
-6. Open your browser and navigate to `http://localhost:5000`
-
-## Project Structure
-
+2. Start the React frontend (in a separate terminal)
+```bash
+npm run dev
 ```
-Mini-II/
-├── app.py                 # Main application file
-├── init_db.py            # Database initialization script
-├── models.py             # Database models
-├── requirements.txt      # Python dependencies
-├── static/              # Static files (CSS, JS, images)
-│   ├── css/
-│   └── js/
-├── templates/           # HTML templates
-│   ├── base.html
-│   ├── landing.html
-│   └── ...
-└── uploads/            # User uploaded files
-```
+
+The application will be available at `http://localhost:5173`
+
+## Features in Detail
+
+### Exercise Form Detection
+- Uses TensorFlow.js and MediaPipe for real-time pose estimation
+- Provides instant feedback on exercise form
+- Counts repetitions automatically
+
+### Workout Tracking
+- Records exercise sets, reps, and weights
+- Tracks progress over time
+- Generates performance analytics
+
+### Personalized Recommendations
+- AI-powered exercise suggestions based on user performance
+- Adapts difficulty levels based on progress
+- Provides variety in workout routines
 
 ## Contributing
 
 1. Fork the repository
-2. Create a new branch
-3. Make your changes
-4. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 
@@ -81,96 +138,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- MediaPipe for pose detection
-- Flask for web framework
-- Font Awesome for icons
+- TensorFlow.js team for pose estimation models
+- MediaPipe team for computer vision solutions
+- OpenCV community for image processing tools
+- All contributors who have helped shape this project
 
-Content
-1. Sprints and Details
-2. Images
-3. Tests
+## Contact
 
-# Planned Sprints
-![image J9K5P2](https://github.com/ohksith/Workout-Form-Checker/assets/79146902/feb9f2e9-ee17-48b4-86ce-b5dee448a653)
+Parth Gupta - [@PARTHG0106](https://github.com/PARTHG0106)
 
-# Week 1-4: 
-## Sprint 1 - Front-End and Back-End Development
-| Task | Status |
-| ------------- | ------------- |
-| Design: Designing System Architecture, Database Schema, API Schema.|X|
-| Front-End: Build the basic structure using HTML, CSS, and JavaScript.|X|
-| Back-End: Implement core functionalities with Flask.|X|
-| Database: Set up PostgreSQL for handling user data.|X|
-| Testing: Initial manual and automated tests on front-end and back-end to ensure basic functionality.|X|
-
-Milestones: 
-> Completion of front-end and back-end development.
-
-# Week 5-7: 
-## Sprint 2 - Model Training, Feedback Mechanism and Additional features
-| Task | Status |
-| ------------- | ------------- |
-|Model Training: Train Media Pipe Model for joint detection and angle calculation.|X|
-|Integration: Integrate Media Pipe and OpenCV for real-time video processing.|X|
-|Feedback Mechanism: Implement logic for analyzing joint angles and providing real-time feedback.|X|
-|Feedback Mechanism: Implement logic for post-workout feedback and tracking.|X|
-|Additional Features: Alternate exercise options and personalized recommendations.|X|
-|Testing: Manual and automated testing of the training and feedback mechanisms.|X|
-
-Milestones:
-> 1. Completion of model training and feedback mechanism.
-> 2. Successful integration of Media Pipe and OpenCV.
-> 3. Initial testing of the feedback mechanism.
-
-   
-# Week 8-10: 
-## Sprint 3 - End-to-End Testing and Security Implementation
-| Task | Status |
-| ------------- | ------------- |
-| End-to-End Testing: Conduct thorough end-to-end testing of the entire application.|X|
-| Automated Testing: Implement Selenium for automated testing to ensure functionality, performance, and reliability.|X|
-| Load Testing: Load testing for 100 concurrent users.|X|
-| Security: Apply OWASP Top 10 security principles to protect user data and ensure application security.|X|
-| Bug Fixing: Identify and fix any issues discovered during testing.|X|
-
-
-Milestones:
->1. Comprehensive end-to-end testing completed.
->2. Automated testing with Selenium implemented.
->3. Security measures applied and tested.
-
- 
-# Week 11-13: 
-## Sprint 4 - Deployment and Final Testing
-| Task | Status |
-| ------------- | ------------- |
-| Deployment: Deploy the application on a cloud-based host.|x| - Amazon EC2 to the rescue
-| User Testing: Conduct user testing in the deployed environment and gather feedback.|x|
-| Final Testing: Perform final round of testing to ensure all features are working as expected.|x|
-
-
-Milestones:
->1. Successful deployment of the application.
->2. Final round of testing and bug fixing completed.
->3. Project documentation finalized.
-
-# Images
-## UI - Some pictures of UI (Thank you DaisyUI, sorry performance nerds)
-![image](https://github.com/user-attachments/assets/fbfcc492-e293-4b17-966f-cc6fb3a62f85)
-![image](https://github.com/user-attachments/assets/02878d43-fccb-4379-81ff-ce1567d3e8b2)
-![image](https://github.com/user-attachments/assets/7afc89f5-002a-431e-9117-807b9bfb9cca)
-![image](https://github.com/user-attachments/assets/33f95f8a-5b48-4e6c-a41e-445a7a346f24)
-![image](https://github.com/user-attachments/assets/9b82ac68-3d22-4b57-bbbf-30be91d7af03)
-
-## Feedback
-![image](https://github.com/user-attachments/assets/e904669e-f555-445f-9478-d24e1eb0efb4)
-![image](https://github.com/user-attachments/assets/9a07538d-f329-416d-965c-9783bcaef0c9)
-![image](https://github.com/user-attachments/assets/1fb81cbe-54b6-4648-9529-b869d8739b61)
-![image](https://github.com/user-attachments/assets/1c2b900a-567b-426a-9968-53f064994410)
-
-# Some Tests
-![image](https://github.com/user-attachments/assets/b77a788a-a872-4626-9fc5-b74d68f05efc)
-![image](https://github.com/user-attachments/assets/2caf8a60-ba96-4e65-88b5-9ffa664cf8e4)
-
-
-
+Project Link: [https://github.com/PARTHG0106/FitME](https://github.com/PARTHG0106/FitME) 
