@@ -127,6 +127,6 @@ The application will be available at `http://localhost:5173`
 
 ## Contact
 
-Parth Gupta - [@PARTHG0106](https://github.com/PARTHG0106)
+Parth Goyal - [@PARTHG0106](https://github.com/PARTHG0106)
 
 Project Link: [https://github.com/PARTHG0106/FitME](https://github.com/PARTHG0106/FitME) 
