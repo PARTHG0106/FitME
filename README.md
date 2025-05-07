@@ -1,4 +1,4 @@
-# FitME - AI-Powered Gym Tracking Application
+# FitME - AI-Powered Gym Workout Form Tracker Application
 
 FitME is an innovative gym tracking application that uses artificial intelligence to help users perform exercises correctly and track their fitness progress. The application features real-time pose estimation, exercise form correction, and personalized workout recommendations.
 
