@@ -1,11 +1,12 @@
-import { useParams, useSearchParams } from 'react-router-dom'
-import { Box, Heading, Spinner } from '@chakra-ui/react'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { Box, Heading, Spinner, Button, HStack } from '@chakra-ui/react'
 import { useEffect, useState } from 'react'
 import { apiGet } from '../api'
 
 const StartExercise = () => {
   const { exercise } = useParams()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const repGoal = searchParams.get('rep_goal') || 7 // fallback to 7 if not present
   const [userId, setUserId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -28,6 +29,22 @@ const StartExercise = () => {
 
   return (
     <Box textAlign="center" py={8}>
+      <HStack justify="center" spacing={4} mb={6}>
+        <Button
+          colorScheme="blue"
+          size="lg"
+          onClick={() => window.open('http://localhost:5000/dash/', '_blank')}
+        >
+          Feedback
+        </Button>
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => navigate('/exercises')}
+        >
+          Back to Exercises
+        </Button>
+      </HStack>
       <Heading size="lg" mb={6}>
         Live Feedback: {exercise.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
       </Heading>

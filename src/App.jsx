@@ -10,6 +10,8 @@ import Recommendations from './components/Recommendations'
 import Leaderboard from './components/Leaderboard'
 import Schedule from './components/Schedule'
 import StartExercise from './components/StartExercise'
+import Subscription from './components/Subscription'
+import AdminDashboard from './components/AdminDashboard'
 
 function App() {
   const location = useLocation()
@@ -27,6 +29,8 @@ function App() {
         <Route path="/leaderboard" element={<Layout><Leaderboard /></Layout>} />
         <Route path="/schedule" element={<Layout><Schedule /></Layout>} />
         <Route path="/start/:exercise" element={<Layout><StartExercise /></Layout>} />
+        <Route path="/subscription" element={<Layout><Subscription /></Layout>} />
+        <Route path="/admin" element={<Layout><AdminDashboard /></Layout>} />
       </Routes>
     </AnimatePresence>
   )

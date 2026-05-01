@@ -1,6 +1,6 @@
 import { Box, Flex, VStack, IconButton, useColorMode, useDisclosure } from '@chakra-ui/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiMenu, FiX, FiHome, FiUser, FiActivity, FiLogOut, FiUpload, FiAward, FiCalendar, FiBarChart2 } from 'react-icons/fi'
+import { FiMenu, FiX, FiHome, FiUser, FiActivity, FiLogOut, FiUpload, FiAward, FiCalendar, FiBarChart2, FiCreditCard, FiShield } from 'react-icons/fi'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 const MotionBox = motion(Box)
@@ -38,8 +38,10 @@ const Layout = ({ children }) => {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const handleLogout = () => {
-    // Add your logout logic here
+  const handleLogout = async () => {
+    try {
+      await fetch('http://localhost:5000/logout', { method: 'GET', credentials: 'include' })
+    } catch {}
     navigate('/')
   }
 
@@ -111,6 +113,18 @@ const Layout = ({ children }) => {
                 to="/schedule"
                 isActive={location.pathname === '/schedule'}
               />
+              <SidebarItem
+                icon={FiCreditCard}
+                label="Subscription"
+                to="/subscription"
+                isActive={location.pathname === '/subscription'}
+              />
+              <SidebarItem
+                icon={FiShield}
+                label="Admin"
+                to="/admin"
+                isActive={location.pathname === '/admin'}
+              />
               <MotionFlex
                 align="center"
                 p={4}
@@ -153,7 +167,14 @@ const Layout = ({ children }) => {
             onClick={onToggle}
             aria-label="Toggle Sidebar"
           />
-          {/* Add your header content here */}
+          <IconButton
+            icon={<FiLogOut />}
+            variant="ghost"
+            onClick={handleLogout}
+            aria-label="Logout"
+            color="gray.500"
+            _hover={{ color: 'red.500', bg: 'red.50' }}
+          />
         </MotionFlex>
 
         <Box p={4}>

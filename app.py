@@ -2,7 +2,9 @@ from flask import Flask, flash, render_template, redirect, request, url_for, jso
 from forms import LoginForm, SearchForm, RegistrationForm
 from flask_migrate import Migrate
 from config import Config
-from models import User, db, bcrypt, Exercises, UserExercise, ExerciseUpload, WorkoutSchedule, ScheduleCompletion
+from models import User, db, bcrypt, Exercises, UserExercise, ExerciseUpload, WorkoutSchedule, ScheduleCompletion, SubscriptionEvent
+import stripe
+import json
 from shoulder_press import gen_frames as gen_frames_shoulder_press, analyze_shoulder_press_video
 from bicep_curls import gen_frames as gen_frames_bicep_curls, analyze_bicep_curls_video
 from barbell_squats import gen_frames as gen_frames_barbell_squats, analyze_squat_video
@@ -36,6 +38,25 @@ db.init_app(app)
 bcrypt.init_app(app)
 migrate = Migrate(app, db)
 quartz = dbc.themes.SKETCHY
+
+# Stripe setup
+stripe.api_key = app.config.get('STRIPE_SECRET_KEY', '')
+
+# Plan definitions
+PLANS = {
+    'pro': {
+        'name': 'Pro',
+        'price': 9.99,
+        'price_id': app.config.get('STRIPE_PRO_PRICE_ID', 'price_pro_monthly'),
+        'features': ['Unlimited live tracking', 'Video upload analysis', 'Workout scheduling', 'Dash analytics', 'Leaderboard']
+    },
+    'elite': {
+        'name': 'Elite',
+        'price': 19.99,
+        'price_id': app.config.get('STRIPE_ELITE_PRICE_ID', 'price_elite_monthly'),
+        'features': ['Everything in Pro', 'AI recommendations', 'Priority support', 'Advanced analytics', 'Custom workout plans']
+    }
+}
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads/exercises'
@@ -447,11 +468,11 @@ def mainboard():
     # Check if user has any workout data
     has_data = UserExercise.query.filter_by(user_id=session['user_id']).count() > 0
 
-    # Calculate workout efficiency
+    # Calculate workout efficiency — based on rom_score (form quality) vs total_reps
     total_exercises = UserExercise.query.filter_by(user_id=session['user_id']).count()
     if total_exercises > 0:
         efficiency = db.session.query(
-            func.sum(UserExercise.count) * 100 / func.sum(UserExercise.total_reps)
+            func.sum(UserExercise.rom_score) * 100 / func.sum(UserExercise.total_reps)
         ).filter(UserExercise.user_id == session['user_id']).scalar() or 0
     else:
         efficiency = 0
@@ -776,6 +797,15 @@ def upload_exercise():
         
         exercise_type = request.form.get('exercise_type')
         notes = request.form.get('notes', '')
+
+        # Normalize exercise_type keys
+        exercise_type_map = {
+            'barbell_squats': 'squat', 'bicep_curls': 'bicep_curl',
+            'lateral_raises': 'lateral_raise', 'shoulder_press': 'shoulder_press',
+            'deadlift': 'deadlift', 'squat': 'squat',
+            'bicep_curl': 'bicep_curl', 'lateral_raise': 'lateral_raise',
+        }
+        normalized_type = exercise_type_map.get(exercise_type, exercise_type)
         
         # Save uploaded video
         video_filename = f"{exercise_type}_{int(time.time())}.mp4"
@@ -788,15 +818,15 @@ def upload_exercise():
         
         # Analyze the video based on exercise type
         analysis_result = None
-        if exercise_type == 'bicep_curl':
+        if normalized_type == 'bicep_curl':
             analysis_result = analyze_bicep_curls_video(video_path)
-        elif exercise_type == 'squat':
+        elif normalized_type == 'squat':
             analysis_result = analyze_squat_video(video_path)
-        elif exercise_type == 'shoulder_press':
+        elif normalized_type == 'shoulder_press':
             analysis_result = analyze_shoulder_press_video(video_path)
-        elif exercise_type == 'deadlift':
+        elif normalized_type == 'deadlift':
             analysis_result = analyze_deadlift_video(video_path)
-        elif exercise_type == 'lateral_raise':
+        elif normalized_type == 'lateral_raise':
             analysis_result = analyze_lateral_raise_video(video_path)
             
         if not analysis_result or 'error' in analysis_result:
@@ -1048,10 +1078,10 @@ def api_dashboard():
     # Total workouts
     total_workouts = UserExercise.query.filter_by(user_id=user_id).count()
 
-    # Efficiency
+    # Efficiency — based on rom_score (form quality) vs total_reps
     if total_workouts > 0:
         efficiency = db.session.query(
-            func.sum(UserExercise.count) * 100 / func.sum(UserExercise.total_reps)
+            func.sum(UserExercise.rom_score) * 100 / func.sum(UserExercise.total_reps)
         ).filter(UserExercise.user_id == user_id).scalar() or 0
     else:
         efficiency = 0
@@ -1497,6 +1527,21 @@ def api_upload_exercise():
     notes = request.form.get('notes', '')
 
     print('DEBUG: exercise_type:', exercise_type)
+
+    # Normalize exercise_type keys — the frontend sends keys like 'barbell_squats'
+    # but the analysis functions expect 'squat', 'bicep_curl', etc.
+    exercise_type_map = {
+        'barbell_squats': 'squat',
+        'bicep_curls': 'bicep_curl',
+        'lateral_raises': 'lateral_raise',
+        # These already match, but include for completeness
+        'shoulder_press': 'shoulder_press',
+        'deadlift': 'deadlift',
+        'squat': 'squat',
+        'bicep_curl': 'bicep_curl',
+        'lateral_raise': 'lateral_raise',
+    }
+    normalized_type = exercise_type_map.get(exercise_type, exercise_type)
     
     # Save uploaded video
     video_filename = f"{exercise_type}_{int(time.time())}.mp4"
@@ -1510,15 +1555,15 @@ def api_upload_exercise():
     
     # Analyze the video based on exercise type
     analysis_result = None
-    if exercise_type == 'bicep_curl':
+    if normalized_type == 'bicep_curl':
         analysis_result = analyze_bicep_curls_video(video_path)
-    elif exercise_type == 'squat':
+    elif normalized_type == 'squat':
         analysis_result = analyze_squat_video(video_path)
-    elif exercise_type == 'shoulder_press':
+    elif normalized_type == 'shoulder_press':
         analysis_result = analyze_shoulder_press_video(video_path)
-    elif exercise_type == 'deadlift':
+    elif normalized_type == 'deadlift':
         analysis_result = analyze_deadlift_video(video_path)
-    elif exercise_type == 'lateral_raise':
+    elif normalized_type == 'lateral_raise':
         analysis_result = analyze_lateral_raise_video(video_path)
 
     print('DEBUG: analysis_result:', analysis_result)
@@ -1751,6 +1796,698 @@ def google_auth():
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# SUBSCRIPTION & FEATURE GATING
+# ============================================================
+
+def subscription_required(min_tier='pro'):
+    """Decorator to gate features by subscription tier."""
+    tier_levels = {'free': 0, 'pro': 1, 'elite': 2}
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'user_id' not in session:
+                return jsonify({'error': 'Login required'}), 401
+            user = User.query.get(session['user_id'])
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            user_level = tier_levels.get(user.subscription_tier, 0)
+            required_level = tier_levels.get(min_tier, 1)
+            if user_level < required_level:
+                return jsonify({
+                    'error': 'Subscription required',
+                    'required_tier': min_tier,
+                    'current_tier': user.subscription_tier,
+                    'upgrade_url': '/subscription'
+                }), 403
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+def admin_required(f):
+    """Decorator to restrict routes to admin users."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': 'Login required'}), 401
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_admin:
+            return jsonify({'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/api/subscription/plans')
+def api_subscription_plans():
+    """Get available subscription plans."""
+    user_tier = 'free'
+    user_status = 'inactive'
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        if user:
+            user_tier = user.subscription_tier
+            user_status = user.subscription_status
+
+    return jsonify({
+        'plans': {
+            'free': {
+                'name': 'Free',
+                'price': 0,
+                'features': ['View exercises', '3 live tracking sessions/day', 'Leaderboard access']
+            },
+            'pro': PLANS['pro'],
+            'elite': PLANS['elite']
+        },
+        'current_tier': user_tier,
+        'current_status': user_status,
+        'stripe_publishable_key': app.config.get('STRIPE_PUBLISHABLE_KEY', '')
+    })
+
+
+@app.route('/api/subscription/checkout', methods=['POST'])
+@login_required
+def api_subscription_checkout():
+    """Create a Stripe Checkout Session."""
+    data = request.get_json()
+    plan = data.get('plan')
+
+    if plan not in PLANS:
+        return jsonify({'error': 'Invalid plan'}), 400
+
+    user = User.query.get(session['user_id'])
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        # Create or retrieve Stripe customer
+        if not user.stripe_customer_id:
+            customer = stripe.Customer.create(
+                email=user.email,
+                name=user.username or user.name,
+                metadata={'user_id': str(user.id)}
+            )
+            user.stripe_customer_id = customer.id
+            db.session.commit()
+
+        # Create Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            customer=user.stripe_customer_id,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': PLANS[plan]['price_id'],
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=app.config['FRONTEND_URL'] + '/subscription?success=true&plan=' + plan,
+            cancel_url=app.config['FRONTEND_URL'] + '/subscription?cancelled=true',
+            metadata={
+                'user_id': str(user.id),
+                'plan': plan
+            }
+        )
+
+        # Log the event
+        event = SubscriptionEvent(
+            user_id=user.id,
+            event_type='checkout_started',
+            tier=plan,
+            amount=PLANS[plan]['price'],
+            details=f'Checkout session: {checkout_session.id}'
+        )
+        db.session.add(event)
+        db.session.commit()
+
+        return jsonify({'checkout_url': checkout_session.url})
+
+    except stripe.error.StripeError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/subscription/portal', methods=['POST'])
+@login_required
+def api_subscription_portal():
+    """Create Stripe Customer Portal session for subscription management."""
+    user = User.query.get(session['user_id'])
+    if not user or not user.stripe_customer_id:
+        return jsonify({'error': 'No subscription found'}), 404
+
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=user.stripe_customer_id,
+            return_url=app.config['FRONTEND_URL'] + '/subscription',
+        )
+        return jsonify({'portal_url': portal_session.url})
+    except stripe.error.StripeError as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/subscription/status')
+@login_required
+def api_subscription_status():
+    """Get current user's subscription status."""
+    user = User.query.get(session['user_id'])
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    return jsonify({
+        'tier': user.subscription_tier,
+        'status': user.subscription_status,
+        'end_date': user.subscription_end_date.isoformat() if user.subscription_end_date else None,
+        'daily_exercises_used': user.daily_exercise_count,
+        'daily_limit': 3 if user.subscription_tier == 'free' else None
+    })
+
+
+@app.route('/api/stripe/webhook', methods=['POST'])
+def stripe_webhook():
+    """Handle Stripe webhook events."""
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, app.config.get('STRIPE_WEBHOOK_SECRET', '')
+        )
+    except ValueError:
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError:
+        # In development, skip signature verification
+        try:
+            event = json.loads(payload)
+        except Exception:
+            return jsonify({'error': 'Invalid payload'}), 400
+
+    event_type = event.get('type', '') if isinstance(event, dict) else event.type
+    data = event.get('data', {}).get('object', {}) if isinstance(event, dict) else event.data.object
+
+    if event_type == 'checkout.session.completed':
+        metadata = data.get('metadata', {}) if isinstance(data, dict) else getattr(data, 'metadata', {})
+        user_id = metadata.get('user_id')
+        plan = metadata.get('plan')
+        if user_id and plan:
+            user = User.query.get(int(user_id))
+            if user:
+                sub_id = data.get('subscription') if isinstance(data, dict) else getattr(data, 'subscription', None)
+                user.subscription_tier = plan
+                user.subscription_status = 'active'
+                user.stripe_subscription_id = sub_id
+                sub_event = SubscriptionEvent(
+                    user_id=user.id, event_type='payment_success',
+                    tier=plan, amount=PLANS.get(plan, {}).get('price'),
+                    stripe_event_id=event.get('id', '') if isinstance(event, dict) else event.id
+                )
+                db.session.add(sub_event)
+                db.session.commit()
+
+    elif event_type == 'customer.subscription.updated':
+        sub_id = data.get('id') if isinstance(data, dict) else data.id
+        status = data.get('status') if isinstance(data, dict) else data.status
+        user = User.query.filter_by(stripe_subscription_id=sub_id).first()
+        if user:
+            if status == 'active':
+                user.subscription_status = 'active'
+            elif status in ('past_due', 'unpaid'):
+                user.subscription_status = 'past_due'
+            elif status in ('canceled', 'cancelled'):
+                user.subscription_status = 'cancelled'
+                user.subscription_tier = 'free'
+            db.session.commit()
+
+    elif event_type == 'customer.subscription.deleted':
+        sub_id = data.get('id') if isinstance(data, dict) else data.id
+        user = User.query.filter_by(stripe_subscription_id=sub_id).first()
+        if user:
+            user.subscription_tier = 'free'
+            user.subscription_status = 'cancelled'
+            user.stripe_subscription_id = None
+            sub_event = SubscriptionEvent(
+                user_id=user.id, event_type='cancelled', tier='free',
+                stripe_event_id=event.get('id', '') if isinstance(event, dict) else event.id
+            )
+            db.session.add(sub_event)
+            db.session.commit()
+
+    return jsonify({'status': 'ok'}), 200
+
+
+# DEV-ONLY: Simulate subscription activation without Stripe
+@app.route('/api/subscription/dev-activate', methods=['POST'])
+@login_required
+def dev_activate_subscription():
+    """DEV ONLY: Activate a subscription without Stripe for testing."""
+    if not app.debug:
+        return jsonify({'error': 'Only available in development mode'}), 403
+
+    data = request.get_json()
+    plan = data.get('plan', 'pro')
+    if plan not in ('pro', 'elite'):
+        return jsonify({'error': 'Invalid plan'}), 400
+
+    user = User.query.get(session['user_id'])
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    user.subscription_tier = plan
+    user.subscription_status = 'active'
+    event = SubscriptionEvent(
+        user_id=user.id, event_type='dev_activated',
+        tier=plan, amount=PLANS[plan]['price'],
+        details='Activated via dev endpoint'
+    )
+    db.session.add(event)
+    db.session.commit()
+
+    return jsonify({'message': f'{plan.title()} plan activated', 'tier': plan})
+
+
+# ============================================================
+# ADMIN API
+# ============================================================
+
+@app.route('/api/admin/stats')
+@admin_required
+def api_admin_stats():
+    """Get admin dashboard statistics."""
+    total_users = User.query.count()
+    free_users = User.query.filter_by(subscription_tier='free').count()
+    pro_users = User.query.filter_by(subscription_tier='pro').count()
+    elite_users = User.query.filter_by(subscription_tier='elite').count()
+    total_exercises = UserExercise.query.count()
+    total_uploads = ExerciseUpload.query.count()
+
+    # Revenue estimate
+    pro_revenue = pro_users * 9.99
+    elite_revenue = elite_users * 19.99
+    mrr = pro_revenue + elite_revenue
+
+    # Recent signups (last 30 days)
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_signups = User.query.filter(User.created_at >= thirty_days_ago).count()
+
+    # Recent subscription events
+    recent_events = SubscriptionEvent.query.order_by(
+        SubscriptionEvent.created_at.desc()
+    ).limit(20).all()
+    events_list = [{
+        'id': e.id,
+        'user_id': e.user_id,
+        'event_type': e.event_type,
+        'tier': e.tier,
+        'amount': e.amount,
+        'created_at': e.created_at.isoformat(),
+        'details': e.details
+    } for e in recent_events]
+
+    return jsonify({
+        'total_users': total_users,
+        'free_users': free_users,
+        'pro_users': pro_users,
+        'elite_users': elite_users,
+        'total_exercises': total_exercises,
+        'total_uploads': total_uploads,
+        'mrr': round(mrr, 2),
+        'recent_signups': recent_signups,
+        'recent_events': events_list
+    })
+
+
+@app.route('/api/admin/users')
+@admin_required
+def api_admin_users():
+    """List all users with pagination."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '')
+
+    query = User.query
+    if search:
+        query = query.filter(
+            (User.username.ilike(f'%{search}%')) |
+            (User.email.ilike(f'%{search}%'))
+        )
+
+    users = query.order_by(User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    return jsonify({
+        'users': [{
+            'id': u.id,
+            'username': u.username,
+            'email': u.email,
+            'name': u.name,
+            'height': u.height,
+            'weight': u.weight,
+            'goal': u.goal,
+            'rep_goal': u.rep_goal,
+            'ex_goal': u.ex_goal,
+            'subscription_tier': u.subscription_tier,
+            'subscription_status': u.subscription_status,
+            'is_admin': u.is_admin,
+            'is_google_user': u.is_google_user,
+            'created_at': u.created_at.isoformat() if u.created_at else None,
+            'exercise_count': UserExercise.query.filter_by(user_id=u.id).count(),
+        } for u in users.items],
+        'total': users.total,
+        'pages': users.pages,
+        'current_page': page
+    })
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['GET'])
+@admin_required
+def api_admin_user_detail(user_id):
+    """Get detailed user info."""
+    user = User.query.get_or_404(user_id)
+    exercises = UserExercise.query.filter_by(user_id=user_id).count()
+    uploads = ExerciseUpload.query.filter_by(user_id=user_id).count()
+    events = SubscriptionEvent.query.filter_by(user_id=user_id).order_by(
+        SubscriptionEvent.created_at.desc()
+    ).limit(10).all()
+
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'name': user.name,
+        'subscription_tier': user.subscription_tier,
+        'subscription_status': user.subscription_status,
+        'stripe_customer_id': user.stripe_customer_id,
+        'is_admin': user.is_admin,
+        'created_at': user.created_at.isoformat() if user.created_at else None,
+        'exercise_count': exercises,
+        'upload_count': uploads,
+        'subscription_events': [{
+            'event_type': e.event_type,
+            'tier': e.tier,
+            'amount': e.amount,
+            'created_at': e.created_at.isoformat()
+        } for e in events]
+    })
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@admin_required
+def api_admin_update_user(user_id):
+    """Update user (all fields editable by admin)."""
+    user = User.query.get_or_404(user_id)
+    data = request.get_json()
+
+    if 'subscription_tier' in data:
+        old_tier = user.subscription_tier
+        user.subscription_tier = data['subscription_tier']
+        if data['subscription_tier'] != 'free':
+            user.subscription_status = 'active'
+        event = SubscriptionEvent(
+            user_id=user.id,
+            event_type='admin_override',
+            tier=data['subscription_tier'],
+            details=f'Changed from {old_tier} to {data["subscription_tier"]} by admin'
+        )
+        db.session.add(event)
+
+    if 'is_admin' in data:
+        user.is_admin = data['is_admin']
+
+    if 'subscription_status' in data:
+        user.subscription_status = data['subscription_status']
+
+    # Profile fields
+    if 'username' in data:
+        user.username = data['username'] or None
+    if 'email' in data and data['email']:
+        user.email = data['email']
+    if 'name' in data:
+        user.name = data['name'] or None
+    if 'height' in data:
+        user.height = float(data['height']) if data['height'] not in (None, '', 'null') else None
+    if 'weight' in data:
+        user.weight = float(data['weight']) if data['weight'] not in (None, '', 'null') else None
+    if 'goal' in data:
+        user.goal = data['goal'] or None
+    if 'rep_goal' in data:
+        user.rep_goal = int(data['rep_goal']) if data['rep_goal'] not in (None, '', 'null') else 8
+    if 'ex_goal' in data:
+        user.ex_goal = int(data['ex_goal']) if data['ex_goal'] not in (None, '', 'null') else 5
+    if 'created_at' in data and data['created_at']:
+        try:
+            user.created_at = datetime.fromisoformat(str(data['created_at']).replace('Z', '+00:00'))
+        except Exception:
+            pass
+
+    db.session.commit()
+    return jsonify({'message': 'User updated', 'user_id': user.id})
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def api_admin_delete_user(user_id):
+    """Delete a user and all their data."""
+    user = User.query.get_or_404(user_id)
+    if user.is_admin:
+        return jsonify({'error': 'Cannot delete admin users'}), 400
+
+    # Delete related records
+    UserExercise.query.filter_by(user_id=user_id).delete()
+    ExerciseUpload.query.filter_by(user_id=user_id).delete()
+    SubscriptionEvent.query.filter_by(user_id=user_id).delete()
+    schedules = WorkoutSchedule.query.filter_by(user_id=user_id).all()
+    for s in schedules:
+        ScheduleCompletion.query.filter_by(schedule_id=s.id).delete()
+    WorkoutSchedule.query.filter_by(user_id=user_id).delete()
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message': 'User deleted'})
+
+
+# ============================================================
+# ADMIN DATA EDITOR
+# ============================================================
+
+# Map of table names to SQLAlchemy models for generic CRUD
+_TABLE_MODEL_MAP = {
+    'users': User,
+    'exercises': Exercises,
+    'user_exercise': UserExercise,
+    'exercise_uploads': ExerciseUpload,
+    'workout_schedule': WorkoutSchedule,
+    'schedule_completions': ScheduleCompletion,
+    'subscription_events': SubscriptionEvent,
+}
+
+
+def _model_columns(model):
+    """Return list of column info dicts for a model."""
+    cols = []
+    for c in model.__table__.columns:
+        cols.append({
+            'name': c.name,
+            'type': str(c.type),
+            'nullable': c.nullable,
+            'primary_key': c.primary_key,
+        })
+    return cols
+
+
+def _row_to_dict(row, columns):
+    """Convert a SQLAlchemy row to a JSON-safe dict."""
+    d = {}
+    for col in columns:
+        val = getattr(row, col['name'], None)
+        if isinstance(val, datetime):
+            val = val.isoformat()
+        elif hasattr(val, 'isoformat'):
+            val = val.isoformat()
+        d[col['name']] = val
+    return d
+
+
+@app.route('/admin/data')
+@admin_required
+def admin_data_editor():
+    """Render the admin data editor page."""
+    return render_template('admin_data.html')
+
+
+@app.route('/api/admin/data/tables')
+@admin_required
+def api_admin_tables():
+    """List all available tables and their columns."""
+    tables = {}
+    for name, model in _TABLE_MODEL_MAP.items():
+        cols = _model_columns(model)
+        count = model.query.count()
+        tables[name] = {'columns': cols, 'row_count': count}
+    return jsonify(tables)
+
+
+@app.route('/api/admin/data/<table_name>')
+@admin_required
+def api_admin_table_rows(table_name):
+    """Get rows for a table with pagination and search."""
+    model = _TABLE_MODEL_MAP.get(table_name)
+    if not model:
+        return jsonify({'error': 'Table not found'}), 404
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    search = request.args.get('search', '').strip()
+    sort_by = request.args.get('sort_by', '')
+    sort_dir = request.args.get('sort_dir', 'asc')
+
+    columns = _model_columns(model)
+    query = model.query
+
+    # Simple search across string columns
+    if search:
+        filters = []
+        for col in model.__table__.columns:
+            if 'VARCHAR' in str(col.type).upper() or 'TEXT' in str(col.type).upper():
+                filters.append(col.ilike(f'%{search}%'))
+        if filters:
+            from sqlalchemy import or_
+            query = query.filter(or_(*filters))
+
+    # Sorting
+    if sort_by and hasattr(model, sort_by):
+        col_attr = getattr(model, sort_by)
+        query = query.order_by(col_attr.desc() if sort_dir == 'desc' else col_attr.asc())
+    else:
+        # Default: sort by primary key desc
+        pk = [c for c in model.__table__.columns if c.primary_key]
+        if pk:
+            query = query.order_by(pk[0].desc())
+
+    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+    rows = [_row_to_dict(r, columns) for r in paginated.items]
+
+    return jsonify({
+        'columns': columns,
+        'rows': rows,
+        'total': paginated.total,
+        'pages': paginated.pages,
+        'current_page': page,
+    })
+
+
+@app.route('/api/admin/data/<table_name>/<int:row_id>', methods=['PUT'])
+@admin_required
+def api_admin_update_row(table_name, row_id):
+    """Update a single row."""
+    model = _TABLE_MODEL_MAP.get(table_name)
+    if not model:
+        return jsonify({'error': 'Table not found'}), 404
+
+    row = model.query.get(row_id)
+    if not row:
+        return jsonify({'error': 'Row not found'}), 404
+
+    data = request.get_json()
+    columns = {c.name: c for c in model.__table__.columns}
+
+    for key, value in data.items():
+        if key in columns and not columns[key].primary_key:
+            col = columns[key]
+            # Type coercion
+            if value == '' or value is None:
+                if col.nullable:
+                    value = None
+                else:
+                    continue
+            elif 'INT' in str(col.type).upper():
+                value = int(value)
+            elif 'FLOAT' in str(col.type).upper():
+                value = float(value)
+            elif 'BOOL' in str(col.type).upper():
+                value = str(value).lower() in ('true', '1', 'yes')
+            elif 'DATETIME' in str(col.type).upper() and value:
+                try:
+                    value = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                except Exception:
+                    pass
+            setattr(row, key, value)
+
+    db.session.commit()
+    return jsonify({'message': 'Row updated', 'id': row_id})
+
+
+@app.route('/api/admin/data/<table_name>', methods=['POST'])
+@admin_required
+def api_admin_add_row(table_name):
+    """Add a new row to a table."""
+    model = _TABLE_MODEL_MAP.get(table_name)
+    if not model:
+        return jsonify({'error': 'Table not found'}), 404
+
+    data = request.get_json()
+    columns = {c.name: c for c in model.__table__.columns}
+    new_row = model()
+
+    for key, value in data.items():
+        if key in columns and not columns[key].primary_key:
+            col = columns[key]
+            if value == '' or value is None:
+                if col.nullable:
+                    value = None
+                else:
+                    continue
+            elif 'INT' in str(col.type).upper():
+                value = int(value)
+            elif 'FLOAT' in str(col.type).upper():
+                value = float(value)
+            elif 'BOOL' in str(col.type).upper():
+                value = str(value).lower() in ('true', '1', 'yes')
+            elif 'DATETIME' in str(col.type).upper() and value:
+                try:
+                    value = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                except Exception:
+                    pass
+            setattr(new_row, key, value)
+
+    db.session.add(new_row)
+    db.session.commit()
+    return jsonify({'message': 'Row added', 'id': new_row.id}), 201
+
+
+@app.route('/api/admin/data/<table_name>/<int:row_id>', methods=['DELETE'])
+@admin_required
+def api_admin_delete_row(table_name, row_id):
+    """Delete a single row from a table."""
+    model = _TABLE_MODEL_MAP.get(table_name)
+    if not model:
+        return jsonify({'error': 'Table not found'}), 404
+
+    row = model.query.get(row_id)
+    if not row:
+        return jsonify({'error': 'Row not found'}), 404
+
+    try:
+        # For users table, cascade delete related records first
+        if table_name == 'users':
+            UserExercise.query.filter_by(user_id=row_id).delete()
+            ExerciseUpload.query.filter_by(user_id=row_id).delete()
+            SubscriptionEvent.query.filter_by(user_id=row_id).delete()
+            schedules = WorkoutSchedule.query.filter_by(user_id=row_id).all()
+            for s in schedules:
+                ScheduleCompletion.query.filter_by(schedule_id=s.id).delete()
+            WorkoutSchedule.query.filter_by(user_id=row_id).delete()
+        # For workout_schedule, delete completions first
+        elif table_name == 'workout_schedule':
+            ScheduleCompletion.query.filter_by(schedule_id=row_id).delete()
+
+        db.session.delete(row)
+        db.session.commit()
+        return jsonify({'message': 'Row deleted', 'id': row_id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Delete failed: {str(e)}'}), 500
+
 
 if __name__ == "__main__":
     app.debug = True  # Enable debug mode

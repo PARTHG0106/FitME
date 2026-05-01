@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Admin Data Editor — FitMe{% endblock %}
+{% block content %}
+<style>
+  :root { --ad-bg: #0f172a; --ad-card: #1e293b; --ad-border: #334155; --ad-accent: #3b82f6; --ad-accent2: #10b981; --ad-danger: #ef4444; --ad-text: #e2e8f0; --ad-muted: #94a3b8; --ad-input: #0f172a; }
+  .ad-wrap { background: var(--ad-bg); min-height: 100vh; padding: 1.5rem; font-family: 'Inter', sans-serif; color: var(--ad-text); }
+  .ad-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .ad-header h1 { font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, var(--ad-accent), var(--ad-accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; }
+  .ad-header .ad-back { color: var(--ad-muted); text-decoration: none; font-size: .85rem; border: 1px solid var(--ad-border); padding: .35rem .75rem; border-radius: .5rem; transition: all .2s; }
+  .ad-header .ad-back:hover { border-color: var(--ad-accent); color: var(--ad-accent); }
+  .ad-grid { display: grid; grid-template-columns: 220px 1fr; gap: 1.25rem; }
+  @media (max-width: 768px) { .ad-grid { grid-template-columns: 1fr; } }
+
+  /* Sidebar */
+  .ad-sidebar { background: var(--ad-card); border: 1px solid var(--ad-border); border-radius: .75rem; padding: .75rem; height: fit-content; position: sticky; top: 1rem; }
+  .ad-sidebar h3 { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ad-muted); margin: 0 0 .5rem .5rem; }
+  .ad-tbl-btn { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: .5rem .75rem; border: none; background: transparent; color: var(--ad-text); font-size: .82rem; border-radius: .5rem; cursor: pointer; transition: all .15s; text-align: left; }
+  .ad-tbl-btn:hover { background: rgba(59,130,246,.1); }
+  .ad-tbl-btn.active { background: rgba(59,130,246,.15); color: var(--ad-accent); font-weight: 600; }
+  .ad-tbl-btn .cnt { font-size: .7rem; color: var(--ad-muted); background: var(--ad-bg); padding: .1rem .4rem; border-radius: .25rem; }
+
+  /* Main panel */
+  .ad-main { background: var(--ad-card); border: 1px solid var(--ad-border); border-radius: .75rem; overflow: hidden; }
+  .ad-toolbar { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--ad-border); flex-wrap: wrap; }
+  .ad-toolbar .tbl-name { font-weight: 700; font-size: 1rem; margin-right: auto; }
+  .ad-search { background: var(--ad-input); border: 1px solid var(--ad-border); color: var(--ad-text); padding: .4rem .75rem; border-radius: .5rem; font-size: .82rem; width: 200px; outline: none; transition: border-color .2s; }
+  .ad-search:focus { border-color: var(--ad-accent); }
+  .ad-btn { padding: .4rem .85rem; border: none; border-radius: .5rem; font-size: .8rem; font-weight: 600; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: .35rem; }
+  .ad-btn-primary { background: var(--ad-accent); color: #fff; }
+  .ad-btn-primary:hover { background: #2563eb; }
+  .ad-btn-success { background: var(--ad-accent2); color: #fff; }
+  .ad-btn-success:hover { background: #059669; }
+  .ad-btn-danger { background: var(--ad-danger); color: #fff; }
+  .ad-btn-danger:hover { background: #dc2626; }
+  .ad-btn-ghost { background: transparent; color: var(--ad-muted); border: 1px solid var(--ad-border); }
+  .ad-btn-ghost:hover { border-color: var(--ad-accent); color: var(--ad-accent); }
+  .ad-btn-sm { padding: .25rem .5rem; font-size: .72rem; }
+
+  /* Table */
+  .ad-table-wrap { overflow-x: auto; }
+  .ad-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  .ad-table th { background: var(--ad-bg); color: var(--ad-muted); font-weight: 600; text-transform: uppercase; font-size: .68rem; letter-spacing: .05em; padding: .6rem .75rem; text-align: left; cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid var(--ad-border); position: sticky; top: 0; z-index: 2; }
+  .ad-table th:hover { color: var(--ad-accent); }
+  .ad-table th .sort-icon { margin-left: .3rem; opacity: .4; }
+  .ad-table th.sorted .sort-icon { opacity: 1; color: var(--ad-accent); }
+  .ad-table td { padding: .5rem .75rem; border-bottom: 1px solid rgba(51,65,85,.4); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ad-table tr:hover td { background: rgba(59,130,246,.04); }
+  .ad-table td.editing { padding: .25rem .4rem; }
+  .ad-table td.editing input, .ad-table td.editing select { width: 100%; background: var(--ad-input); border: 1px solid var(--ad-accent); color: var(--ad-text); padding: .3rem .5rem; border-radius: .35rem; font-size: .8rem; outline: none; }
+  .ad-table td .cell-actions { display: none; }
+  .ad-table tr:hover td .cell-actions { display: inline-flex; gap: .25rem; margin-left: .35rem; }
+  .ad-table td .pk-badge { font-size: .65rem; background: rgba(59,130,246,.15); color: var(--ad-accent); padding: .1rem .35rem; border-radius: .2rem; }
+  .ad-table td .null-val { color: var(--ad-muted); font-style: italic; font-size: .75rem; }
+  .ad-table td .bool-true { color: var(--ad-accent2); }
+  .ad-table td .bool-false { color: var(--ad-danger); }
+
+  /* Pagination */
+  .ad-pagination { display: flex; align-items: center; justify-content: space-between; padding: .6rem 1rem; border-top: 1px solid var(--ad-border); font-size: .78rem; color: var(--ad-muted); }
+  .ad-pagination .page-btns { display: flex; gap: .25rem; }
+  .ad-pagination .page-btns button { padding: .25rem .55rem; background: var(--ad-bg); border: 1px solid var(--ad-border); color: var(--ad-text); border-radius: .35rem; cursor: pointer; font-size: .75rem; }
+  .ad-pagination .page-btns button.active { background: var(--ad-accent); border-color: var(--ad-accent); color: #fff; }
+  .ad-pagination .page-btns button:hover:not(.active) { border-color: var(--ad-accent); }
+
+  /* Modal */
+  .ad-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .ad-modal-overlay.show { display: flex; }
+  .ad-modal { background: var(--ad-card); border: 1px solid var(--ad-border); border-radius: .75rem; width: 90%; max-width: 520px; max-height: 80vh; overflow-y: auto; }
+  .ad-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--ad-border); }
+  .ad-modal-header h3 { margin: 0; font-size: 1rem; }
+  .ad-modal-header .close-btn { background: none; border: none; color: var(--ad-muted); font-size: 1.2rem; cursor: pointer; }
+  .ad-modal-body { padding: 1rem 1.25rem; }
+  .ad-modal-body label { display: block; font-size: .75rem; color: var(--ad-muted); margin-bottom: .2rem; margin-top: .6rem; text-transform: uppercase; letter-spacing: .05em; }
+  .ad-modal-body input, .ad-modal-body select { width: 100%; background: var(--ad-input); border: 1px solid var(--ad-border); color: var(--ad-text); padding: .45rem .65rem; border-radius: .4rem; font-size: .85rem; outline: none; box-sizing: border-box; }
+  .ad-modal-body input:focus { border-color: var(--ad-accent); }
+  .ad-modal-footer { padding: .75rem 1.25rem; border-top: 1px solid var(--ad-border); display: flex; justify-content: flex-end; gap: .5rem; }
+
+  /* Toast */
+  .ad-toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: .6rem 1.2rem; border-radius: .5rem; font-size: .82rem; font-weight: 600; color: #fff; z-index: 200; transform: translateY(100px); opacity: 0; transition: all .3s ease; }
+  .ad-toast.show { transform: translateY(0); opacity: 1; }
+  .ad-toast.success { background: var(--ad-accent2); }
+  .ad-toast.error { background: var(--ad-danger); }
+
+  .ad-empty { padding: 3rem; text-align: center; color: var(--ad-muted); }
+  .ad-loading { padding: 2rem; text-align: center; color: var(--ad-muted); }
+  .ad-loading::after { content: ''; display: inline-block; width: 16px; height: 16px; border: 2px solid var(--ad-border); border-top-color: var(--ad-accent); border-radius: 50%; animation: adspin .6s linear infinite; margin-left: .5rem; vertical-align: middle; }
+  @keyframes adspin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="ad-wrap">
+  <div class="ad-header">
+    <h1>⚡ Data Editor</h1>
+    <a href="{{ url_for('mainboard') }}" class="ad-back">← Back to Dashboard</a>
+  </div>
+
+  <div class="ad-grid">
+    <!-- Sidebar -->
+    <div class="ad-sidebar" id="sidebar">
+      <h3>Tables</h3>
+      <div id="table-list"><div class="ad-loading">Loading</div></div>
+    </div>
+
+    <!-- Main -->
+    <div class="ad-main">
+      <div class="ad-toolbar" id="toolbar" style="display:none;">
+        <span class="tbl-name" id="toolbar-title"></span>
+        <input type="text" class="ad-search" id="search-input" placeholder="Search…" />
+        <button class="ad-btn ad-btn-success" id="btn-add-row" onclick="openAddModal()">+ Add Row</button>
+        <button class="ad-btn ad-btn-ghost" id="btn-refresh" onclick="loadRows()">↻ Refresh</button>
+      </div>
+      <div class="ad-table-wrap" id="table-container">
+        <div class="ad-empty" id="empty-state">Select a table from the sidebar to browse data.</div>
+      </div>
+      <div class="ad-pagination" id="pagination" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="ad-modal-overlay" id="modal-overlay">
+  <div class="ad-modal">
+    <div class="ad-modal-header">
+      <h3 id="modal-title">Add Row</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="ad-modal-body" id="modal-body"></div>
+    <div class="ad-modal-footer">
+      <button class="ad-btn ad-btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="ad-btn ad-btn-primary" id="modal-save" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="ad-toast" id="toast"></div>
+
+<script>
+const API = '/api/admin/data';
+let state = { table: null, columns: [], rows: [], page: 1, pages: 1, total: 0, sortBy: '', sortDir: 'asc', search: '', tables: {}, editingRowId: null };
+
+// ── Init ──
+async function init() {
+  const res = await fetch(`${API}/tables`, { credentials: 'include' });
+  if (!res.ok) { toast('Failed to load tables', 'error'); return; }
+  state.tables = await res.json();
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('table-list');
+  el.innerHTML = Object.entries(state.tables).map(([name, info]) =>
+    `<button class="ad-tbl-btn" data-table="${name}" onclick="selectTable('${name}')">
+      <span>${name}</span><span class="cnt">${info.row_count}</span>
+    </button>`
+  ).join('');
+}
+
+function selectTable(name) {
+  state.table = name; state.page = 1; state.search = ''; state.sortBy = ''; state.sortDir = 'asc';
+  document.getElementById('search-input').value = '';
+  document.querySelectorAll('.ad-tbl-btn').forEach(b => b.classList.toggle('active', b.dataset.table === name));
+  document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('toolbar-title').textContent = name;
+  loadRows();
+}
+
+// ── Load Rows ──
+async function loadRows() {
+  const c = document.getElementById('table-container');
+  c.innerHTML = '<div class="ad-loading">Loading</div>';
+  const params = new URLSearchParams({ page: state.page, per_page: 50 });
+  if (state.search) params.set('search', state.search);
+  if (state.sortBy) { params.set('sort_by', state.sortBy); params.set('sort_dir', state.sortDir); }
+
+  const res = await fetch(`${API}/${state.table}?${params}`, { credentials: 'include' });
+  if (!res.ok) { c.innerHTML = '<div class="ad-empty">Error loading data</div>'; return; }
+  const data = await res.json();
+  state.columns = data.columns; state.rows = data.rows; state.total = data.total; state.pages = data.pages; state.page = data.current_page;
+  renderTable();
+  renderPagination();
+}
+
+// ── Render Table ──
+function renderTable() {
+  const c = document.getElementById('table-container');
+  if (!state.rows.length) { c.innerHTML = '<div class="ad-empty">No rows found.</div>'; document.getElementById('pagination').style.display = 'none'; return; }
+
+  const ths = state.columns.map(col => {
+    const sorted = state.sortBy === col.name;
+    const icon = sorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '⇅';
+    return `<th class="${sorted ? 'sorted' : ''}" onclick="sortColumn('${col.name}')">${col.name} <span class="sort-icon">${icon}</span></th>`;
+  }).join('') + '<th style="width:90px">Actions</th>';
+
+  const trs = state.rows.map(row => {
+    const tds = state.columns.map(col => {
+      const val = row[col.name];
+      let display;
+      if (val === null || val === undefined) display = '<span class="null-val">NULL</span>';
+      else if (col.primary_key) display = `<span class="pk-badge">${val}</span>`;
+      else if (col.type.includes('BOOL')) display = val ? '<span class="bool-true">✓ true</span>' : '<span class="bool-false">✗ false</span>';
+      else display = escapeHtml(String(val));
+      return `<td title="${escapeHtml(String(val ?? ''))}">${display}</td>`;
+    }).join('');
+    const pk = state.columns.find(c => c.primary_key);
+    const id = pk ? row[pk.name] : null;
+    return `<tr>${tds}<td>
+      <button class="ad-btn ad-btn-ghost ad-btn-sm" onclick="openEditModal(${id})">✎</button>
+      <button class="ad-btn ad-btn-danger ad-btn-sm" onclick="deleteRow(${id})">✕</button>
+    </td></tr>`;
+  }).join('');
+
+  c.innerHTML = `<table class="ad-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+// ── Sorting ──
+function sortColumn(colName) {
+  if (state.sortBy === colName) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  else { state.sortBy = colName; state.sortDir = 'asc'; }
+  loadRows();
+}
+
+// ── Pagination ──
+function renderPagination() {
+  const el = document.getElementById('pagination');
+  if (state.pages <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const info = `Showing ${(state.page-1)*50+1}–${Math.min(state.page*50, state.total)} of ${state.total}`;
+  let btns = '';
+  for (let i = 1; i <= state.pages; i++) {
+    if (state.pages > 7 && i > 2 && i < state.pages - 1 && Math.abs(i - state.page) > 1) { if (btns.slice(-3) !== '...') btns += '<span style="color:var(--ad-muted);padding:0 .25rem">...</span>'; continue; }
+    btns += `<button class="${i === state.page ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  el.innerHTML = `<span>${info}</span><div class="page-btns">${btns}</div>`;
+}
+function goPage(p) { state.page = p; loadRows(); }
+
+// ── Search ──
+let searchTimer;
+document.getElementById('search-input').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.search = e.target.value; state.page = 1; loadRows(); }, 350);
+});
+
+// ── Add Modal ──
+function openAddModal() {
+  state.editingRowId = null;
+  document.getElementById('modal-title').textContent = `Add Row to ${state.table}`;
+  const body = document.getElementById('modal-body');
+  body.innerHTML = state.columns.filter(c => !c.primary_key).map(col =>
+    `<label>${col.name} <span style="opacity:.5">(${col.type}${col.nullable ? ', nullable' : ''})</span></label>
+     <input type="text" data-col="${col.name}" placeholder="${col.nullable ? 'NULL if empty' : 'Required'}" />`
+  ).join('');
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+// ── Edit Modal ──
+function openEditModal(id) {
+  state.editingRowId = id;
+  const row = state.rows.find(r => { const pk = state.columns.find(c => c.primary_key); return pk && r[pk.name] === id; });
+  if (!row) return;
+  document.getElementById('modal-title').textContent = `Edit Row #${id}`;
+  const body = document.getElementById('modal-body');
+  body.innerHTML = state.columns.filter(c => !c.primary_key).map(col => {
+    const val = row[col.name] ?? '';
+    if (col.type.includes('BOOL')) {
+      return `<label>${col.name}</label>
+        <select data-col="${col.name}">
+          <option value="true" ${val ? 'selected' : ''}>true</option>
+          <option value="false" ${!val ? 'selected' : ''}>false</option>
+        </select>`;
+    }
+    return `<label>${col.name} <span style="opacity:.5">(${col.type})</span></label>
+      <input type="text" data-col="${col.name}" value="${escapeHtml(String(val))}" />`;
+  }).join('');
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+
+// ── Save Modal ──
+async function saveModal() {
+  const inputs = document.querySelectorAll('#modal-body input, #modal-body select');
+  const data = {};
+  inputs.forEach(inp => { data[inp.dataset.col] = inp.value; });
+
+  let res;
+  if (state.editingRowId !== null) {
+    res = await fetch(`${API}/${state.table}/${state.editingRowId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  } else {
+    res = await fetch(`${API}/${state.table}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+  }
+  const result = await res.json();
+  if (res.ok) { toast(result.message, 'success'); closeModal(); loadRows(); refreshSidebar(); }
+  else toast(result.error || 'Failed', 'error');
+}
+
+// ── Delete ──
+async function deleteRow(id) {
+  if (!confirm(`Delete row #${id} from ${state.table}? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`${API}/${state.table}/${id}`, { method: 'DELETE', credentials: 'include' });
+    let result;
+    try { result = await res.json(); } catch { result = { error: 'Server error (non-JSON response)' }; }
+    if (res.ok) { toast(result.message || 'Deleted', 'success'); loadRows(); refreshSidebar(); }
+    else toast(result.error || `Delete failed (${res.status})`, 'error');
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+// ── Refresh sidebar counts ──
+async function refreshSidebar() {
+  const res = await fetch(`${API}/tables`, { credentials: 'include' });
+  if (res.ok) { state.tables = await res.json(); renderSidebar(); if (state.table) document.querySelector(`.ad-tbl-btn[data-table="${state.table}"]`)?.classList.add('active'); }
+}
+
+// ── Toast ──
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `ad-toast ${type} show`;
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Util ──
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Start ──
+init();
+</script>
+{% endblock %}
